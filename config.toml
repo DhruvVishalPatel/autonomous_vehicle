@@ -1,0 +1,14 @@
+# Robot configuration. Edit values here, not in the code.
+
+[motors]
+# BCM GPIO numbers — mapping verified with the gpiozero Robot test.
+# ENA/ENB are held HIGH, speed is PWM on the direction pins.
+ena = 12
+enb = 13
+left_forward   = 5
+left_backward  = 6
+right_forward  = 21
+right_backward = 20
+invert_left  = false    # set true if the left side runs backwards
+invert_right = false
+max_speed    = 1.0      # cap on any command (0..1)

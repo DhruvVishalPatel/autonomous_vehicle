@@ -48,7 +48,7 @@ class Lidar:
         o(ydlidar.LidarPropSampleRate, int(c["sample_rate"]))
         o(ydlidar.LidarPropSingleChannel, True)
         o(ydlidar.LidarPropIntenstiy, False)          # (sic) SDK spelling
-        o(ydlidar.LidarPropSupportMotorDtrCtrl, True)
+        o(ydlidar.LidarPropSupportMotorDtrCtrl, bool(c.get("motor_dtr", True)))
         o(ydlidar.LidarPropAutoReconnect, True)
         o(ydlidar.LidarPropMaxAngle, 180.0)
         o(ydlidar.LidarPropMinAngle, -180.0)

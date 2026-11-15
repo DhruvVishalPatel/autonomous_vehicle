@@ -21,12 +21,13 @@ port      = "/dev/ttyUSB0"
 baud      = 115200
 frequency = 7.0          # X2 spins at a fixed ~7 Hz
 sample_rate = 3          # kHz
+motor_dtr = true         # let the SDK control the motor via DTR (false if it spins too fast)
 min_range = 0.12         # m, ignore closer returns (chassis, standoffs)
 max_range = 8.0          # m
 # Robot convention: angle 0 = straight ahead, positive = to the LEFT (counter-clockwise).
 # Adjust these with tools/test_lidar.py:
 angle_offset_deg = 0.0   # rotate the scan so a box in front reads "front"
-flip = true             # true if left and right come out swapped
+flip = true              # true if left and right come out swapped
 
 [robot]
 length = 0.32            # m, front-to-back (MDF plate)

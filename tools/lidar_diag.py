@@ -4,6 +4,7 @@
     ./run.sh tools/lidar_diag.py                       # settings from config.toml
     ./run.sh tools/lidar_diag.py --freq 6 --rate 3     # try other SDK settings
     ./run.sh tools/lidar_diag.py --no-single           # try single_channel = false
+    ./run.sh tools/lidar_diag.py --no-dtr              # SDK doesn't touch the motor line
 
 Keep the robot still. Collects 40 scans straight from the SDK and reports:
   rate      scans per second (X2 should be ~6-8 Hz)
@@ -28,6 +29,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--freq", type=float)
 ap.add_argument("--rate", type=int, help="sample rate in kHz")
 ap.add_argument("--no-single", action="store_true")
+ap.add_argument("--no-dtr", action="store_true", help="do not let the SDK drive the motor via DTR")
 ap.add_argument("--n", type=int, default=40)
 a = ap.parse_args()
 
@@ -35,7 +37,8 @@ c = load()["lidar"]
 freq = a.freq if a.freq is not None else c["frequency"]
 rate = a.rate if a.rate is not None else c["sample_rate"]
 single = not a.no_single
-print(f"port {c['port']}  baud {c['baud']}  freq {freq}  sample_rate {rate}  single_channel {single}")
+dtr = not a.no_dtr and c.get("motor_dtr", True)
+print(f"port {c['port']}  baud {c['baud']}  freq {freq}  sample_rate {rate}  single_channel {single}  motor_dtr {dtr}")
 
 L = ydlidar.CYdLidar()
 o = L.setlidaropt
@@ -47,7 +50,7 @@ o(ydlidar.LidarPropScanFrequency, float(freq))
 o(ydlidar.LidarPropSampleRate, int(rate))
 o(ydlidar.LidarPropSingleChannel, single)
 o(ydlidar.LidarPropIntenstiy, False)
-o(ydlidar.LidarPropSupportMotorDtrCtrl, True)
+o(ydlidar.LidarPropSupportMotorDtrCtrl, bool(dtr))
 o(ydlidar.LidarPropMaxAngle, 180.0)
 o(ydlidar.LidarPropMinAngle, -180.0)
 o(ydlidar.LidarPropMaxRange, 16.0)      # wide limits: see everything the sensor sends
@@ -90,5 +93,7 @@ print(f"  rate      {1 / np.nanmean(r[:, 0]):.1f} Hz   (dt spread {np.nanstd(r[:
 print(f"  points    {r[:, 1].mean():.0f} raw / {r[:, 2].mean():.0f} valid per scan")
 print(f"  coverage  {r[:, 3].mean():.0f}%   largest gap {r[:, 6].mean():.0f}°   repeat {np.nanmean(r[:, 7]):.0f}%")
 full = r[:, 3].mean() > 60 and r[:, 6].mean() < 40
-print("  verdict  ", "full revolutions" if full else
-      "PARTIAL / unstable scans — paste this output to Claude")
+hz = 1 / np.nanmean(r[:, 0])
+print(f"  points/turn at this speed: {r[:, 1].mean():.0f}  (X2 ~430 at 7 Hz)")
+print("  verdict  ", "spinning too fast" if hz > 9 else "speed OK", "/",
+      "full turns" if r[:, 4].mean() < -170 and r[:, 5].mean() > 165 else "PARTIAL turns")

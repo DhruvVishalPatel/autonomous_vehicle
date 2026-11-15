@@ -205,10 +205,19 @@ class SLAM:
 
     def load(self, path, pose=None):
         d = np.load(path)
+        L, res = d["L"], float(d["res"])
+        if abs(res - self.grid.res) > 1e-9:
+            raise ValueError(f"map was saved at {res} m/cell, config uses {self.grid.res}")
+        n_old, n = L.shape[0], self.grid.n
         with self.lock:
-            if d["L"].shape != self.grid.L.shape or float(d["res"]) != self.grid.res:
-                raise ValueError("map size/resolution differs from config")
-            self.grid.L[:] = d["L"]
+            # both maps are centred on the start point, so a different size just pads/crops evenly
+            self.grid.L[:] = 0
+            if n_old <= n:
+                o = (n - n_old) // 2
+                self.grid.L[o:o + n_old, o:o + n_old] = L
+            else:
+                o = (n_old - n) // 2
+                self.grid.L[:] = L[o:o + n, o:o + n]
             self.grid.version += 1
             # Robot must be placed back at the spot where mapping started
             self.pose = np.array(pose if pose is not None else (0.0, 0.0, 0.0), dtype=float)

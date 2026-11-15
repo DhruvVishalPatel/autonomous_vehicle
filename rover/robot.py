@@ -101,8 +101,12 @@ class Robot:
         return name
 
     def load_map(self, name):
-        self.slam.load(MAP_DIR / f"{name}.npz")
-        self.log(f"map loaded: {name} (robot must be back at that map's start spot, same direction)")
+        try:
+            self.nav.cancel("map loaded")
+            self.slam.load(MAP_DIR / f"{name}.npz")
+            self.log(f"map loaded: {name} (robot must be back at that map's start spot, same direction)")
+        except Exception as e:
+            self.log(f"could not load map '{name}': {e}")
 
     def list_maps(self):
         MAP_DIR.mkdir(exist_ok=True)

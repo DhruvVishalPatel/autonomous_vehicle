@@ -18,12 +18,20 @@ class Motors:
         self.inv_l = -1.0 if c.get("invert_left") else 1.0
         self.inv_r = -1.0 if c.get("invert_right") else 1.0
         self.max = float(c.get("max_speed", 1.0))
+        self.set_trim(c.get("trim", 0.0))
+
+    def set_trim(self, trim):
+        """trim > 0 slows the right side, trim < 0 slows the left side."""
+        t = max(-0.5, min(0.5, float(trim)))
+        self.k_l = 1.0 - max(0.0, -t)
+        self.k_r = 1.0 - max(0.0, t)
 
     def _clip(self, x):
         return max(-self.max, min(self.max, float(x)))
 
     def drive(self, left, right):
-        self.robot.value = (self._clip(left) * self.inv_l, self._clip(right) * self.inv_r)
+        self.robot.value = (self._clip(left) * self.k_l * self.inv_l,
+                            self._clip(right) * self.k_r * self.inv_r)
 
     def stop(self):
         self.robot.stop()

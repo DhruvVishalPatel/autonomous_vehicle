@@ -56,3 +56,14 @@ After the box test passes:
 ```
 
 Drives forward, slows down within 60 cm, stops 20 cm before an obstacle (`[safety]` in `config.toml`).
+
+### Driving straight (trim)
+
+If the robot curves, first check with wheels off the ground that all 4 wheels spin forward
+at similar speed, then tune the balance:
+
+```bash
+./run.sh tools/trim_test.py 0.05     # curves left -> raise; curves right -> lower
+```
+
+Put the value that drives straight into `config.toml` → `[motors] trim`.

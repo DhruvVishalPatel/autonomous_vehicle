@@ -34,11 +34,11 @@ length = 0.32            # m, front-to-back (MDF plate)
 width  = 0.28            # m, side-to-side incl. wheels
 
 [safety]
-stop_distance = 0.30     # m from the front (or rear) EDGE of the robot to the obstacle
-slow_distance = 0.80     # start slowing down inside this
+stop_distance = 0.20     # m from the front (or rear) EDGE of the robot to the obstacle
+slow_distance = 0.60     # start slowing down inside this
 
 [drive]
-max_speed  = 0.7         # joystick full forward = this motor command (0..1)
+max_speed  = 0.5         # joystick full forward = this motor command (0..1)
 turn_speed = 0.45        # joystick full sideways = this turn command
 manual_timeout = 0.5     # s without a joystick message -> stop (phone locked, Wi-Fi drop)
 lidar_timeout  = 0.6     # s without a lidar scan -> stop
@@ -62,7 +62,7 @@ resolution = 0.10        # m per cell for route planning (coarser than the map =
 inflation  = 0.03        # extra clearance on top of the robot's turning radius
 
 [nav]
-speed        = 0.5      # forward motor command while driving to a goal (0..1)
+speed        = 0.35      # forward motor command while driving to a goal (0..1)
 turn_speed   = 0.40      # max turn command
 turn_gain    = 1.0       # turn command per radian of heading error
 turn_in_place = 0.8      # rad: if the target is this far off to the side, spin first
@@ -76,3 +76,22 @@ wait_for_clear = 4.0     # s: blocked with no way around -> wait this long for a
 [explore]                # used in Step 6
 min_frontier_size = 4
 blacklist_radius  = 0.5
+
+[ukf]
+# The UKF learns how fast the robot really drives/turns per unit of motor command.
+init_speed_gain     = 0.5    # m/s at full forward command (starting guess, learned while driving)
+init_turn_gain      = 2.0    # rad/s at full turn command (starting guess, learned while driving)
+slip_noise          = 0.10   # m/s: motion the model doesn't explain (slip, bumps)
+yaw_slip_noise      = 0.35   # rad/s: rotation the model doesn't explain
+gain_noise          = 0.05   # per s: how quickly the learned gains may drift
+meas_pos_noise      = 0.03   # m: scan-match position noise (at 100 % match quality)
+meas_angle_noise_deg = 1.5   # deg: scan-match heading noise
+gate                = 16.0   # reject scan matches further than this (Mahalanobis^2, 3 dof)
+
+[camera]
+enabled = true
+device  = 0              # /dev/video0
+width   = 640
+height  = 480
+fps     = 15
+quality = 70             # JPEG quality for the stream

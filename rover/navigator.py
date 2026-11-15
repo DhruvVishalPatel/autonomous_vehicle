@@ -1,4 +1,7 @@
-"""Go-to-goal: plan a route on the map with A*, then follow it.
+"""Go-to-goal and exploration: plan a route on the map with A*, then follow it.
+
+Explore = repeatedly drive to the nearest reachable frontier (edge between
+mapped floor and unexplored space) until there is none left.
 
 Two halves:
 * a planning thread (~5 Hz) that runs A* and replans every few seconds
@@ -32,7 +35,9 @@ class Navigator:
         self.half_w = r["width"] / 2 + 0.05
         self._live = np.zeros((0, 2))       # current scan, world frame, nearby only
         self._last_fast_replan = 0.0
+        self.mode = "idle"        # idle | goto | explore
         self.goal = None          # (x, y)
+        self.blacklist = []       # frontiers that could not be reached
         self.path = None          # [(x, y), ...]
         self.status = "idle"
         self._need_plan = False
@@ -50,19 +55,35 @@ class Navigator:
     # ------------------------------------------------------------------ API
     @property
     def active(self):
-        return self.goal is not None
+        return self.mode != "idle"
 
     def go_to(self, x, y):
         with self._lock:
+            self.mode = "goto"
             self.goal, self.path = (float(x), float(y)), None
             self._need_plan, self._recovery, self._recoveries = True, [], 0
             self._hist.clear()
         self._set_status(f"planning to ({x:.2f}, {y:.2f})")
 
+    def explore(self):
+        with self._lock:
+            self.mode, self.goal, self.path = "explore", None, None
+            self._need_plan, self._recovery, self._recoveries = True, [], 0
+            self.blacklist = []
+            self._hist.clear()
+        self._set_status("exploring")
+
     def cancel(self, why="cancelled"):
         with self._lock:
-            self.goal, self.path, self._recovery = None, None, []
+            self.mode, self.goal, self.path, self._recovery = "idle", None, None, []
         self._set_status(why)
+
+    def _next_target(self, why=None):
+        """Explore: current frontier done or unreachable -> pick another on the next tick."""
+        with self._lock:
+            if why == "failed" and self.goal is not None:
+                self.blacklist.append(self.goal)
+            self.goal, self.path, self._need_plan, self._recoveries = None, None, True, 0
 
     def _set_status(self, s):
         if s != self.status:
@@ -79,10 +100,24 @@ class Navigator:
                 self.cancel(f"planner error: {e}")
 
     def _plan_tick(self):
-        goal = self.goal
-        if goal is None or self._recovery:
+        if self.mode == "idle" or self._recovery:
             return
         if not self._need_plan and time.monotonic() - self._last_plan < self.replan_period:
+            return
+        if self.mode == "explore":
+            g = self.goal
+            if g is not None and not planner.still_frontier(self.cfg, self.slam.grid, g):
+                g = None                                  # that area got mapped on the way
+            if g is None:
+                g = planner.find_frontier(self.cfg, self.slam.grid, self._pose[:2], self.blacklist)
+                if g is None:
+                    self.cancel("exploration complete")
+                    return
+                with self._lock:
+                    self.goal, self.path = g, None
+                self._set_status(f"exploring → ({g[0]:.1f}, {g[1]:.1f})")
+        goal = self.goal
+        if goal is None:
             return
         path, reason = planner.plan(self.cfg, self.slam.grid, self._pose[:2], goal, live=self._live)
         blocked_by_live = False
@@ -101,12 +136,16 @@ class Navigator:
                     self._last_plan = time.monotonic() - self.replan_period + 0.5
                     self._set_status("waiting for the way to clear")
                     return
-                self.goal, self.path = None, None
+                if self.mode == "explore":
+                    self.blacklist.append(goal)
+                    self.goal, self.path, self._need_plan = None, None, True
+                    return
+                self.mode, self.goal, self.path = "idle", None, None
                 self._set_status(f"failed: {reason}")
                 return
             first = self.path is None or self.status.startswith("waiting")
             self.path, self._idx = path, 0
-        if first:
+        if first and self.mode == "goto":
             self._set_status(f"driving to ({goal[0]:.2f}, {goal[1]:.2f})"
                              + (" through unexplored area" if "unexplored" in reason else ""))
 
@@ -115,7 +154,7 @@ class Navigator:
         """(v, w) motor-command units for this tick; (0, 0) when idle."""
         self._pose = pose.copy()
         now = time.monotonic()
-        if self.goal is None:
+        if self.mode == "idle":
             self._blocked_t0 = None
             return 0.0, 0.0
         if scan is not None:
@@ -142,7 +181,10 @@ class Navigator:
 
         gx, gy = path[-1]
         if math.hypot(gx - pose[0], gy - pose[1]) < self.tol:
-            self.cancel("goal reached")
+            if self.mode == "explore":
+                self._next_target()
+            else:
+                self.cancel("goal reached")
             return 0.0, 0.0
 
         # something (a person?) moved into the route ahead -> re-plan right away
@@ -229,7 +271,10 @@ class Navigator:
         self._recoveries += 1
         self._hist.clear()
         if self._recoveries > 4:
-            self.cancel("failed: blocked too many times")
+            if self.mode == "explore":
+                self._next_target("failed")
+            else:
+                self.cancel("failed: blocked too many times")
             return
         phases = []
         if safety.rear > 0.15:

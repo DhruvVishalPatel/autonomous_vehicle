@@ -5,99 +5,194 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <title>Rover</title>
 <style>
+  :root { --bg:#0f1115; --panel:#171a20; --card:#1c2027; --line:#2a2f38; --text:#e8eaee; --dim:#8a919d;
+          --blue:#3d8bfd; --green:#2fbf71; --amber:#f0a020; --red:#e5484d; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: #121418; color: #e6e8ec; font: 14px system-ui, sans-serif;
-         display: flex; flex-direction: column; height: 100vh; user-select: none; }
-  header { display: flex; gap: 8px; align-items: center; padding: 8px 10px; background: #1b1e24; flex-wrap: wrap; }
-  #status { font-weight: 600; flex: 1; }
-  .pill { font-size: 12px; color: #9aa1ad; }
-  #main { flex: 1; display: flex; min-height: 0; }
-  #view { flex: 1; min-width: 0; touch-action: none; }
-  #side { width: 260px; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; align-items: center; background: #181a20; }
-  #stop { width: 100%; padding: 16px; font-size: 20px; font-weight: 700; border: 0; border-radius: 12px;
-          background: #e5484d; color: #fff; }
-  #stop.on { background: #5a1d20; }
-  #joy { flex-shrink: 0; width: 200px; height: 200px; border-radius: 50%; background: #20242c; border: 2px solid #2e3440;
-         position: relative; touch-action: none; }
-  #knob { width: 70px; height: 70px; border-radius: 50%; background: #3d8bfd; position: absolute;
-          left: 65px; top: 65px; pointer-events: none; }
-  .kv { width: 100%; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 13px; }
-  .kv span:nth-child(odd) { color: #9aa1ad; }
-  .tab { background: #262a33; color: #e6e8ec; border: 1px solid #333a46; border-radius: 8px; padding: 5px 10px; font: inherit; }
-  .tab.on { background: #3d8bfd; border-color: #3d8bfd; }
-  .maprow { width: 100%; display: flex; gap: 6px; }
-  .maprow input, .maprow select { flex: 1; min-width: 0; background: #20242c; color: #e6e8ec; border: 1px solid #333a46; border-radius: 8px; padding: 6px; font: inherit; }
-  .maprow button { background: #262a33; color: #e6e8ec; border: 1px solid #333a46; border-radius: 8px; padding: 6px 10px; font: inherit; }
-  #log { width: 100%; font: 11px/1.4 ui-monospace, monospace; color: #7d8492; white-space: pre-wrap; }
-  .hint { font-size: 12px; color: #7d8492; text-align: center; }
-  @media (max-width: 700px) { #main { flex-direction: column; } #side { width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: center; } #view { min-height: 50vh; } }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+               font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; user-select: none; }
+  #app { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+
+  /* top bar */
+  header { display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: var(--panel);
+           border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .brand { font-weight: 700; font-size: 16px; letter-spacing: .02em; display: flex; align-items: center; gap: 8px; }
+  .brand i { width: 10px; height: 10px; border-radius: 50%; background: var(--dim); display: inline-block; }
+  .brand i.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  #status { padding: 4px 12px; border-radius: 999px; background: #232831; font-weight: 600; font-size: 13px;
+            max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #status.warn { background: rgba(240,160,32,.15); color: var(--amber); }
+  #status.bad { background: rgba(229,72,77,.18); color: var(--red); }
+  #status.good { background: rgba(47,191,113,.15); color: var(--green); }
+  .seg { display: flex; background: #232831; border-radius: 10px; padding: 3px; margin-left: auto; }
+  .seg button { border: 0; background: none; color: var(--dim); padding: 6px 14px; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer; }
+  .seg button.on { background: var(--blue); color: #fff; }
+
+  /* body */
+  main { display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+  #stage { position: relative; min-width: 0; }
+  #view { width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+  .float { position: absolute; display: flex; gap: 6px; }
+  .float.tl { left: 12px; top: 12px; } .float.tr { right: 12px; top: 12px; } .float.bl { left: 12px; bottom: 12px; }
+  .chip { background: rgba(23,26,32,.9); border: 1px solid var(--line); color: var(--text); border-radius: 8px;
+          padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+  .chip.on { background: var(--blue); border-color: var(--blue); }
+  .legend { font-size: 12px; color: var(--dim); gap: 12px; background: rgba(23,26,32,.85); padding: 6px 10px; border-radius: 8px; }
+  .legend b { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+
+  aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 12px;
+          display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .card h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+  #stop { width: 100%; padding: 16px; border: 0; border-radius: 12px; background: var(--red); color: #fff;
+          font-size: 20px; font-weight: 800; letter-spacing: .05em; cursor: pointer; }
+  #stop.on { background: #4a1a1d; outline: 2px solid var(--red); }
+  #cam { width: 100%; aspect-ratio: 4/3; border-radius: 8px; background: #000; object-fit: cover; display: block; }
+  #camoff { aspect-ratio: 4/3; border-radius: 8px; background: #11141a; display: grid; place-items: center; color: var(--dim); }
+  #joy { flex-shrink: 0; width: 180px; height: 180px; margin: 4px auto; border-radius: 50%; background: #13161c;
+         border: 1px solid var(--line); position: relative; touch-action: none; }
+  #knob { width: 64px; height: 64px; border-radius: 50%; background: var(--blue); position: absolute; left: 58px; top: 58px;
+          pointer-events: none; box-shadow: 0 4px 14px rgba(61,139,253,.4); }
+  .hint { font-size: 12px; color: var(--dim); text-align: center; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: #15181e; border-radius: 8px; padding: 8px; }
+  .stat span { display: block; font-size: 11px; color: var(--dim); }
+  .stat b { font-size: 15px; font-weight: 600; }
+  .row { display: flex; gap: 6px; margin-top: 6px; }
+  .row input, .row select { flex: 1; min-width: 0; background: #13161c; color: var(--text); border: 1px solid var(--line);
+                            border-radius: 8px; padding: 7px 8px; font: inherit; }
+  .btn { background: #262b34; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px;
+         font: inherit; cursor: pointer; }
+  .btn:hover { border-color: #3a404c; }
+  .btn.wide { width: 100%; margin-top: 8px; }
+  #log { font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--dim); white-space: pre-wrap; max-height: 120px; overflow-y: auto; }
+
+  @media (max-width: 820px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 58vh auto; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+    .seg { margin-left: 0; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <span id="status">connecting…</span>
-  <button id="vRobot" class="tab on">Robot view</button>
-  <button id="vMap" class="tab">Map view</button>
-  <span class="pill">match <b id="q">–</b></span>
-  <span class="pill">lidar <b id="hz">–</b> Hz</span>
-  <span class="pill">loop <b id="lhz">–</b> Hz</span>
-</header>
-<div id="main">
-  <canvas id="view"></canvas>
-  <div id="side">
-    <button id="stop">STOP</button>
-    <button id="cancel" class="tab" style="width:100%;padding:10px">Cancel goal</button>
-    <div class="hint">Map view: click anywhere on the map to send the robot there.</div>
-    <div id="joy"><div id="knob"></div></div>
-    <div class="hint">Drag the joystick, or hold W A S D / arrow keys. Space = STOP.</div>
-    <div class="kv">
-      <span>front clear</span><span id="front">–</span>
-      <span>rear clear</span><span id="rear">–</span>
-      <span>wheels L / R</span><span id="cmd">–</span>
-      <span>position</span><span id="pose">–</span>
-      <span>mapping</span><span id="slam">–</span>
+<div id="app">
+  <header>
+    <div class="brand"><i id="conn"></i>Rover</div>
+    <div id="status">connecting…</div>
+    <div class="seg" id="modes">
+      <button data-mode="drive" class="on">Drive</button>
+      <button data-mode="goto">Go to</button>
+      <button data-mode="explore">Explore</button>
     </div>
-    <div class="maprow"><input id="mname" value="room"><button id="save">Save</button></div>
-    <div class="maprow"><select id="mlist"></select><button id="load">Load</button><button id="clear">Clear</button></div>
-    <div id="log"></div>
-  </div>
+  </header>
+
+  <main>
+    <div id="stage">
+      <canvas id="view"></canvas>
+      <div class="float tl">
+        <button class="chip on" id="vMap">Map</button>
+        <button class="chip" id="vLidar">Lidar</button>
+      </div>
+      <div class="float tr">
+        <button class="chip" id="zin">+</button><button class="chip" id="zout">−</button>
+      </div>
+      <div class="float bl legend" id="legend">
+        <span><b style="background:#cfd4dc"></b>floor</span>
+        <span><b style="background:#3a3f48"></b>wall</span>
+        <span><b style="background:#ff5a5f"></b>lidar</span>
+        <span><b style="background:#3d8bfd"></b>route</span>
+      </div>
+    </div>
+
+    <aside>
+      <button id="stop">STOP</button>
+
+      <div class="card">
+        <h3>Camera</h3>
+        <img id="cam" alt="" style="display:none">
+        <div id="camoff">Camera off</div>
+      </div>
+
+      <div class="card">
+        <h3>Drive</h3>
+        <div id="joy"><div id="knob"></div></div>
+        <div class="hint" id="hint">Drag the joystick or use W A S D · Space = STOP</div>
+      </div>
+
+      <div class="card">
+        <h3>Status</h3>
+        <div class="stats">
+          <div class="stat"><span>Position</span><b id="pos">–</b></div>
+          <div class="stat"><span>Heading</span><b id="hdg">–</b></div>
+          <div class="stat"><span>Speed (UKF)</span><b id="spd">–</b></div>
+          <div class="stat"><span>Accuracy (UKF)</span><b id="acc">–</b></div>
+          <div class="stat"><span>Scan match</span><b id="match">–</b></div>
+          <div class="stat"><span>Front / rear</span><b id="clr">–</b></div>
+          <div class="stat" style="grid-column: span 2"><span>Motor calibration (learned by UKF)</span><b id="cal">–</b></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Map</h3>
+        <div class="row"><input id="mname" value="home" placeholder="map name"><button class="btn" id="save">Save</button></div>
+        <div class="row"><select id="mlist"></select><button class="btn" id="load">Load</button></div>
+        <button class="btn wide" id="clear">Clear map &amp; start here</button>
+      </div>
+
+      <div class="card">
+        <h3>Activity</h3>
+        <div id="log"></div>
+      </div>
+    </aside>
+  </main>
 </div>
+
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
-let S = null, zoom = 120;   // pixels per metre
 const cv = $("view"), ctx = cv.getContext("2d");
-const post = (url, body) => fetch(url, {method: "POST", headers: {"Content-Type": "application/json"},
-                                        body: JSON.stringify(body)}).catch(() => {});
+let S = null, zoom = 90, view = "map", uiMode = "drive";
+const post = (url, body = {}) => fetch(url, {method: "POST", headers: {"Content-Type": "application/json"},
+                                            body: JSON.stringify(body)}).catch(() => {});
 
+// ------------------------------------------------------------ state polling
 async function poll() {
-  try { S = await (await fetch("/api/state")).json(); update(); }
-  catch (e) { $("status").textContent = "disconnected"; S = null; }
+  try { S = await (await fetch("/api/state")).json(); $("conn").classList.add("on"); update(); }
+  catch (e) { S = null; $("conn").classList.remove("on"); setStatus("disconnected", "bad"); }
   setTimeout(poll, 100);
 }
+function setStatus(text, cls) { const el = $("status"); el.textContent = text; el.className = cls || ""; }
 function update() {
-  $("status").textContent = S.status;
-  $("status").style.color = S.status.startsWith("obstacle") || S.estop ? "#f0a020" : "#e6e8ec";
-  $("hz").textContent = S.lidar_hz; $("lhz").textContent = S.loop_hz;
-  const f = v => v === null ? "∞" : v.toFixed(2) + " m";
-  $("front").textContent = f(S.front); $("rear").textContent = f(S.rear);
-  $("cmd").textContent = S.cmd[0].toFixed(2) + " / " + S.cmd[1].toFixed(2);
-  $("stop").textContent = S.estop ? "RELEASE STOP" : "STOP";
-  $("q").textContent = (S.slam.quality * 100).toFixed(0) + "%" + (S.slam.lost ? " LOST" : "");
-  $("q").style.color = S.slam.lost ? "#e5484d" : "";
-  const p = S.pose;
-  $("pose").textContent = `${p[0].toFixed(2)}, ${p[1].toFixed(2)} m · ${(p[2] * 180 / Math.PI).toFixed(0)}°`;
-  $("slam").textContent = (S.slam.mapping ? "on" : "paused (turning fast)") + ` · ${S.slam.ms} ms`;
-  $("slam").style.color = S.slam.ms > 250 ? "#e5484d" : "";
-  $("log").textContent = S.messages.slice().reverse().join("\n");
-  if (S.map.version !== mapVersion) fetchMap(S.map.version);
+  const st = S.status;
+  setStatus(S.estop ? "STOPPED — press Release" : st,
+            S.estop || st.startsWith("failed") || st === "no lidar data" ? "bad" :
+            st.startsWith("obstacle") || st.startsWith("waiting") || st.startsWith("blocked") ? "warn" :
+            st === "goal reached" || st === "exploration complete" ? "good" : "");
+  // the header mode follows what the robot is doing
+  if (S.mode === "explore") setMode("explore", false);
+  else if (S.mode === "goto") setMode("goto", false);
+  const p = S.pose, u = S.ukf;
+  $("pos").textContent = `${p[0].toFixed(2)}, ${p[1].toFixed(2)} m`;
+  $("hdg").textContent = `${(p[2] * 180 / Math.PI).toFixed(0)}°`;
+  $("spd").textContent = `${Math.abs(u.speed).toFixed(2)} m/s`;
+  $("acc").textContent = `±${u.pos_cm.toFixed(0)} cm · ±${u.heading_deg.toFixed(0)}°`;
+  $("match").textContent = S.slam.lost ? "LOST" : `${(S.slam.quality * 100).toFixed(0)}%`;
+  $("match").style.color = S.slam.lost ? "var(--red)" : "";
+  const f = v => v === null ? "∞" : v.toFixed(2);
+  $("clr").textContent = `${f(S.front)} / ${f(S.rear)} m`;
+  $("cal").textContent = `${u.gains[0].toFixed(2)} m/s · ${u.gains[1].toFixed(2)} rad/s at full command`;
+  $("stop").textContent = S.estop ? "RELEASE" : "STOP";
   $("stop").classList.toggle("on", S.estop);
+  $("log").textContent = S.messages.slice().reverse().join("\n");
+  if (S.camera && $("cam").style.display === "none") {
+    $("cam").src = "/stream.mjpg"; $("cam").style.display = "block"; $("camoff").style.display = "none";
+  }
+  if (S.map.version !== mapVersion) fetchMap(S.map.version);
 }
 
-// ---- map image (fetched when the map changes, at most ~1x per second)
-let mapImg = null, mapMeta = null, mapVersion = -1, mapBusy = false, mapLast = 0, view = "robot";
+// ------------------------------------------------------------ map image
+let mapImg = null, mapMeta = null, mapVersion = -1, mapBusy = false, mapLast = 0;
 async function fetchMap(version) {
-  if (mapBusy || performance.now() - mapLast < 900) return;     // retried on the next poll
+  if (mapBusy || performance.now() - mapLast < 900) return;
   mapBusy = true; mapLast = performance.now();
   try {
     const buf = await (await fetch("/api/map")).arrayBuffer();
@@ -106,106 +201,122 @@ async function fetchMap(version) {
       const cells = new Uint8Array(buf, 16), img = new ImageData(w, h);
       for (let k = 0; k < h; k++) for (let j = 0; j < w; j++) {
         const v = cells[(h - 1 - k) * w + j], o = (k * w + j) * 4;
-        const g = v === 255 ? 38 : v < 127 ? 205 : Math.round(150 - 135 * (v - 127) / 127);
-        img.data[o] = img.data[o + 1] = img.data[o + 2] = g; img.data[o + 3] = 255;
-        if (v === 255) { img.data[o] = 30; img.data[o + 1] = 34; img.data[o + 2] = 42; }
+        let r, g, b;
+        if (v === 255) { r = 24; g = 27; b = 33; }                     // unknown
+        else if (v < 127) { r = 207; g = 212; b = 220; }               // floor
+        else { const t = (v - 127) / 127; r = g = b = Math.round(120 - 80 * t); }  // wall
+        img.data[o] = r; img.data[o + 1] = g; img.data[o + 2] = b; img.data[o + 3] = 255;
       }
       const off = document.createElement("canvas"); off.width = w; off.height = h;
       off.getContext("2d").putImageData(img, 0, 0);
       mapImg = off; mapMeta = { r0, c0, h, w };
-    }
+    } else { mapImg = null; }
     mapVersion = version;
   } finally { mapBusy = false; }
 }
+
+// ------------------------------------------------------------ drawing
+function draw() {
+  const dpr = devicePixelRatio || 1, W = cv.clientWidth * dpr, H = cv.clientHeight * dpr;
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  ctx.fillStyle = "#0f1115"; ctx.fillRect(0, 0, W, H);
+  if (S) (view === "map" ? drawMap : drawLidar)(W, H, dpr);
+  requestAnimationFrame(draw);
+}
+function drawRobotBody(k, dpr) {
+  const R = S.robot;
+  ctx.fillStyle = "#3d8bfd"; ctx.fillRect(-R.length / 2 * k, -R.width / 2 * k, R.length * k, R.width * k);
+  ctx.fillStyle = "#fff"; ctx.beginPath();
+  ctx.moveTo(R.length / 2 * k - 3 * dpr, 0); ctx.lineTo(R.length / 2 * k - 14 * dpr, -7 * dpr);
+  ctx.lineTo(R.length / 2 * k - 14 * dpr, 7 * dpr); ctx.fill();
+}
 function drawMap(W, H, dpr) {
   const k = zoom * dpr, [px, py, pth] = S.pose;
-  const P = (x, y) => [W / 2 + (x - px) * k, H / 2 - (y - py) * k];   // map: x right, y up, robot centred
+  const P = (x, y) => [W / 2 + (x - px) * k, H / 2 - (y - py) * k];
   if (mapImg) {
     const res = S.map.res, [sx, sy] = P(S.map.origin + mapMeta.c0 * res, S.map.origin + (mapMeta.r0 + mapMeta.h) * res);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(mapImg, sx, sy, mapMeta.w * res * k, mapMeta.h * res * k);
   }
   if (S.path.length > 1) {
-    ctx.strokeStyle = "#3d8bfd"; ctx.lineWidth = 3 * dpr; ctx.beginPath();
+    ctx.strokeStyle = "#3d8bfd"; ctx.lineWidth = 3 * dpr; ctx.lineJoin = "round"; ctx.beginPath();
     S.path.forEach(([x, y], i) => { const [qx, qy] = P(x, y); i ? ctx.lineTo(qx, qy) : ctx.moveTo(qx, qy); });
     ctx.stroke();
   }
   if (S.goal) {
     const [gx, gy] = P(S.goal[0], S.goal[1]);
-    ctx.strokeStyle = "#2fbf71"; ctx.lineWidth = 3 * dpr;
-    ctx.beginPath(); ctx.arc(gx, gy, 10 * dpr, 0, 7); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(gx - 15 * dpr, gy); ctx.lineTo(gx + 15 * dpr, gy);
-    ctx.moveTo(gx, gy - 15 * dpr); ctx.lineTo(gx, gy + 15 * dpr); ctx.stroke();
+    ctx.fillStyle = "rgba(47,191,113,.25)"; ctx.beginPath(); ctx.arc(gx, gy, 14 * dpr, 0, 7); ctx.fill();
+    ctx.fillStyle = "#2fbf71"; ctx.beginPath(); ctx.arc(gx, gy, 6 * dpr, 0, 7); ctx.fill();
   }
   const c = Math.cos(pth), s = Math.sin(pth);
   ctx.fillStyle = "#ff5a5f";
   for (const [x, y] of S.points) { const [qx, qy] = P(px + x * c - y * s, py + x * s + y * c); ctx.fillRect(qx - 1.5, qy - 1.5, 3, 3); }
-  const R = S.robot;
-  ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(-pth);
-  ctx.fillStyle = "#3d8bfd"; ctx.fillRect(-R.length / 2 * k, -R.width / 2 * k, R.length * k, R.width * k);
-  ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(R.length / 2 * k, 0); ctx.stroke();
-  ctx.restore();
+  // UKF uncertainty (2 sigma)
+  ctx.strokeStyle = "rgba(61,139,253,.6)"; ctx.setLineDash([4 * dpr, 4 * dpr]); ctx.lineWidth = 1.5 * dpr;
+  ctx.beginPath(); ctx.arc(W / 2, H / 2, Math.max(2 * S.ukf.pos_cm / 100 * k, 4), 0, 7); ctx.stroke(); ctx.setLineDash([]);
+  ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(-pth); drawRobotBody(k, dpr); ctx.restore();
+}
+function drawLidar(W, H, dpr) {           // robot-centred, front = up
+  const k = zoom * 1.4 * dpr, cx = W / 2, cy = H / 2, P = (x, y) => [cx - y * k, cy - x * k];
+  ctx.strokeStyle = "#20252d"; ctx.fillStyle = "#5c6370"; ctx.font = 11 * dpr + "px system-ui";
+  for (let r = 0.5; r <= 8; r += 0.5) { ctx.beginPath(); ctx.arc(cx, cy, r * k, 0, 7); ctx.stroke();
+    if (r % 1 === 0) ctx.fillText(r + " m", cx + 4, cy - r * k - 3); }
+  const R = S.robot, hl = R.length / 2, hw = R.width / 2 + 0.03;
+  const zone = (x0, x1, col) => { const [ax, ay] = P(x1, hw), [bx, by] = P(x0, -hw); ctx.fillStyle = col; ctx.fillRect(ax, ay, bx - ax, by - ay); };
+  zone(hl, hl + R.slow, "rgba(240,160,32,.08)"); zone(hl, hl + R.stop, "rgba(229,72,77,.25)");
+  zone(-hl - R.slow, -hl, "rgba(240,160,32,.08)"); zone(-hl - R.stop, -hl, "rgba(229,72,77,.25)");
+  ctx.fillStyle = "#ff5a5f";
+  for (const [x, y] of S.points) { const [qx, qy] = P(x, y); ctx.fillRect(qx - 2, qy - 2, 4, 4); }
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(-Math.PI / 2); drawRobotBody(k, dpr); ctx.restore();
 }
 
-// ---- lidar view: robot in the centre, FRONT is UP, LEFT is left
-function draw() {
-  const dpr = devicePixelRatio || 1, W = cv.clientWidth * dpr, H = cv.clientHeight * dpr;
-  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
-  ctx.fillStyle = "#121418"; ctx.fillRect(0, 0, W, H);
-  if (S && view === "map") { drawMap(W, H, dpr); requestAnimationFrame(draw); return; }
-  const cx = W / 2, cy = H / 2, k = zoom * dpr;
-  const P = (x, y) => [cx - y * k, cy - x * k];        // robot (x fwd, y left) -> screen
-  ctx.strokeStyle = "#252a33"; ctx.fillStyle = "#5c6370"; ctx.font = 11 * dpr + "px system-ui";
-  for (let r = 0.5; r <= 8; r += 0.5) {
-    ctx.beginPath(); ctx.arc(cx, cy, r * k, 0, 7); ctx.stroke();
-    if (r % 1 === 0) ctx.fillText(r + " m", cx + 4, cy - r * k - 3);
-  }
-  if (S) {
-    const R = S.robot, hl = R.length / 2, hw = R.width / 2 + 0.03;
-    // stop + slow zones ahead and behind
-    const zone = (x0, x1, col) => { const [ax, ay] = P(x1, hw), [bx, by] = P(x0, -hw);
-      ctx.fillStyle = col; ctx.fillRect(ax, ay, bx - ax, by - ay); };
-    zone(hl, hl + R.slow, "rgba(240,160,32,0.08)"); zone(hl, hl + R.stop, "rgba(229,72,77,0.25)");
-    zone(-hl - R.slow, -hl, "rgba(240,160,32,0.08)"); zone(-hl - R.stop, -hl, "rgba(229,72,77,0.25)");
-    // lidar points
-    ctx.fillStyle = "#ff5a5f";
-    for (const [x, y] of S.points) { const [px, py] = P(x, y); ctx.fillRect(px - 2, py - 2, 4, 4); }
-    // robot body + arrow
-    const [rx, ry] = P(hl, R.width / 2);
-    ctx.fillStyle = "#3d8bfd"; ctx.fillRect(rx, ry, R.width * k, R.length * k);
-    ctx.fillStyle = "#fff"; ctx.beginPath();
-    ctx.moveTo(cx, cy - hl * k + 4 * dpr); ctx.lineTo(cx - 8 * dpr, cy - hl * k + 18 * dpr);
-    ctx.lineTo(cx + 8 * dpr, cy - hl * k + 18 * dpr); ctx.fill();
-  }
-  requestAnimationFrame(draw);
+// ------------------------------------------------------------ view + modes
+function setView(v) { view = v; $("vMap").classList.toggle("on", v === "map"); $("vLidar").classList.toggle("on", v === "lidar");
+                      $("legend").style.display = v === "map" ? "" : "none"; }
+$("vMap").onclick = () => setView("map"); $("vLidar").onclick = () => setView("lidar");
+$("zin").onclick = () => zoom = Math.min(400, zoom * 1.25); $("zout").onclick = () => zoom = Math.max(15, zoom / 1.25);
+cv.addEventListener("wheel", e => { e.preventDefault(); zoom = Math.max(15, Math.min(400, zoom * (e.deltaY < 0 ? 1.12 : 0.89))); }, {passive: false});
+
+function setMode(m, send = true) {
+  uiMode = m;
+  document.querySelectorAll("#modes button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+  $("hint").textContent = m === "goto" ? "Click the map to choose where to go" :
+                          m === "explore" ? "Exploring — touch the joystick to take over" :
+                          "Drag the joystick or use W A S D · Space = STOP";
+  if (!send) return;
+  if (m === "explore") post("/api/explore");
+  if (m === "drive") post("/api/cancel");
+  if (m === "goto") setView("map");
 }
-// click on the map view = go there
-cv.addEventListener("click", e => {
+document.querySelectorAll("#modes button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+// the robot finished / was cancelled -> back to Drive
+setInterval(() => { if (S && S.mode === "idle" && uiMode === "explore") setMode("drive", false); }, 500);
+
+cv.addEventListener("click", e => {          // click map = go there
   if (view !== "map" || !S) return;
   const dpr = devicePixelRatio || 1, r = cv.getBoundingClientRect(), k = zoom * dpr;
-  const sx = (e.clientX - r.left) * dpr, sy = (e.clientY - r.top) * dpr;
-  const x = S.pose[0] + (sx - cv.width / 2) / k, y = S.pose[1] - (sy - cv.height / 2) / k;
-  post("/api/goto", {x, y});
+  const x = S.pose[0] + ((e.clientX - r.left) * dpr - cv.width / 2) / k;
+  const y = S.pose[1] - ((e.clientY - r.top) * dpr - cv.height / 2) / k;
+  setMode("goto", false); post("/api/goto", {x, y});
 });
-cv.addEventListener("wheel", e => { e.preventDefault(); zoom = Math.max(30, Math.min(400, zoom * (e.deltaY < 0 ? 1.15 : 0.87))); }, {passive: false});
 
-// ---- joystick + keyboard, sent 10x per second while active
+// ------------------------------------------------------------ joystick + keys
 const joy = $("joy"), knob = $("knob");
 let jv = null;
 function joyMove(e) {
   const r = joy.getBoundingClientRect(), R = r.width / 2;
   let x = (e.clientX - r.left - R) / R, y = (e.clientY - r.top - R) / R;
   const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
-  knob.style.left = (65 + x * 65) + "px"; knob.style.top = (65 + y * 65) + "px";
+  knob.style.left = (58 + x * 58) + "px"; knob.style.top = (58 + y * 58) + "px";
   jv = { x, y: -y };
 }
-joy.addEventListener("pointerdown", e => { joy.setPointerCapture(e.pointerId); joyMove(e); });
+joy.addEventListener("pointerdown", e => { joy.setPointerCapture(e.pointerId); joyMove(e); setMode("drive", false); });
 joy.addEventListener("pointermove", e => { if (jv) joyMove(e); });
-const joyEnd = () => { jv = null; knob.style.left = knob.style.top = "65px"; post("/api/joy", {x: 0, y: 0}); };
+const joyEnd = () => { jv = null; knob.style.left = knob.style.top = "58px"; post("/api/joy", {x: 0, y: 0}); };
 joy.addEventListener("pointerup", joyEnd); joy.addEventListener("pointercancel", joyEnd);
-
 const keys = new Set();
-addEventListener("keydown", e => { if (e.target.tagName === "INPUT") return; keys.add(e.key.toLowerCase()); if (e.key === " ") { e.preventDefault(); $("stop").click(); } });
+addEventListener("keydown", e => { if (e.target.tagName === "INPUT") return; keys.add(e.key.toLowerCase());
+  if (e.key === " ") { e.preventDefault(); $("stop").click(); } });
 addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
 function keyVec() {
   let x = 0, y = 0;
@@ -215,20 +326,18 @@ function keyVec() {
   if (keys.has("d") || keys.has("arrowright")) x += 1;
   return (x || y) ? {x, y} : null;
 }
-setInterval(() => { const v = jv || keyVec(); if (v) post("/api/joy", v); }, 100);
+setInterval(() => { const v = jv || keyVec(); if (v) { if (uiMode !== "drive") setMode("drive", false); post("/api/joy", v); } }, 100);
 $("stop").onclick = () => post("/api/estop", {on: !(S && S.estop)});
-$("cancel").onclick = () => post("/api/cancel", {});
-function setView(v) { view = v; $("vRobot").classList.toggle("on", v === "robot"); $("vMap").classList.toggle("on", v === "map"); }
-$("vRobot").onclick = () => setView("robot"); $("vMap").onclick = () => setView("map");
+
+// ------------------------------------------------------------ maps
 async function refreshMaps() {
   try { const m = await (await fetch("/api/maps")).json(); $("mlist").innerHTML = m.map(n => `<option>${n}</option>`).join(""); } catch (e) {}
 }
 $("save").onclick = async () => { await post("/api/map/save", {name: $("mname").value}); refreshMaps(); };
 $("load").onclick = () => { if ($("mlist").value) post("/api/map/load", {name: $("mlist").value}); };
-$("clear").onclick = () => { if (confirm("Clear the map? The robot's current spot becomes the new start.")) post("/api/map/clear", {}); };
-refreshMaps();
+$("clear").onclick = () => { if (confirm("Clear the map? The robot's current spot becomes the new start.")) post("/api/map/clear"); };
 
-poll(); requestAnimationFrame(draw);
+refreshMaps(); poll(); requestAnimationFrame(draw);
 </script>
 </body>
 </html>

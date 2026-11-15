@@ -2,137 +2,93 @@
 
 Raspberry Pi 5 · L298N · 4 × 12 V DC motors (4WD skid steer) · YDLIDAR X2 · USB webcam
 
-Built step by step. Each step is tested on the robot before the next one starts.
+A web dashboard (phone or laptop) to **drive**, **map a room**, **click a point to go there**
+(steering around people) and **explore automatically**, with a live camera feed.
+Position is estimated with an **Unscented Kalman Filter** fusing the motor commands with
+lidar scan matching.
 
 | Step | What | Status |
 |---|---|---|
-| 1 | Motors + keyboard driving | ✅ done |
-| 2 | Lidar readings | ✅ done |
-| 3 | Web dashboard + obstacle stop | ✅ done |
-| 4 | Room mapping | ✅ done |
-| 5 | Click-to-go navigation + avoiding people | ⏳ testing |
-| 6 | Exploration | |
-| 7 | Camera stream + start on boot | |
+| 1 | Motors + keyboard driving | ✅ |
+| 2 | Lidar readings | ✅ |
+| 3 | Web dashboard + obstacle stop | ✅ |
+| 4 | Room mapping | ✅ |
+| 5 | Click-to-go + avoiding people | ✅ |
+| 6 | Exploration + UKF localisation | ⏳ testing |
+| 7 | Camera feed + final UI | ⏳ testing |
 
 ## Setup (once, on the Pi)
 
 ```bash
 git clone https://github.com/DhruvVishalPatel/autonomous_vehicle.git
 cd autonomous_vehicle
-./setup_venv.sh
+./setup_venv.sh          # apt packages (incl. OpenCV) + .venv
+./setup_lidar_sdk.sh     # YDLidar SDK into .venv
 ```
 
-After that, `git pull` gets each new step. Run every script with `./run.sh <script>`.
+After that, `git pull` gets updates. Run everything with `./run.sh <script>`.
 
-## Step 1: motors
-
-Wiring: ENA→GPIO12, ENB→GPIO13, left forward/backward → GPIO5/6,
-right forward/backward → GPIO21/20, L298N GND ↔ Pi GND. Pins are in `config.toml`.
-
-```bash
-./run.sh tools/test_motors.py        # wheels OFF the ground; optional speed: 0.3
-./run.sh tools/drive_keyboard.py     # then on the floor: W A S D, SPACE stop, X quit
-```
-
-## Step 2: lidar
-
-Plug the X2's USB adapter into a blue USB 3 port on the Pi.
-
-```bash
-./setup_lidar_sdk.sh             # once; builds the YDLidar SDK into .venv if needed
-./run.sh tools/test_lidar.py     # scan rate + nearest object in 8 directions
-```
-
-Expect about 7 Hz and a few hundred points per scan. Use a box to check
-front / left (see the top of `tools/test_lidar.py`) and set `angle_offset_deg`
-and `flip` in `config.toml`.
-
-### Drive until an obstacle
-
-After the box test passes:
-
-```bash
-./run.sh tools/drive_until_obstacle.py        # optional speed, e.g. 0.4
-```
-
-Drives forward, slows down within 60 cm, stops 20 cm before an obstacle (`[safety]` in `config.toml`).
-
-### Driving straight (trim)
-
-If the robot curves, first check with wheels off the ground that all 4 wheels spin forward
-at similar speed, then tune the balance:
-
-```bash
-./run.sh tools/trim_test.py 0.05     # curves left -> raise; curves right -> lower
-```
-
-Put the value that drives straight into `config.toml` → `[motors] trim`.
-
-## Step 3: web dashboard
+## Run
 
 ```bash
 ./run.sh main.py
 ```
 
-Open the printed address (e.g. `http://192.168.1.50:8080`) on your phone or laptop,
-on the same Wi-Fi as the Pi.
+Open the printed address (e.g. `http://172.20.10.3:8080`) on a phone or laptop on the same Wi-Fi.
 
-- Live lidar view: robot in the middle, front is up. Red zone = stop, orange = slow down.
-- Joystick (or W A S D on a laptop). Release it and the robot stops.
-- STOP button (or Space) locks the motors until pressed again.
-- The robot refuses to drive into anything inside the red zone, forward or reverse;
-  turning on the spot is always allowed.
-- Motors stop if the phone stops sending (0.5 s) or lidar data stops.
+| Mode | How |
+|---|---|
+| **Drive** | Joystick, or W A S D. Release = stop. |
+| **Go to** | Click anywhere on the map. Blue line = route, green dot = goal. |
+| **Explore** | Drives to unexplored edges until the area is mapped, then stops. |
+| **STOP** | Big red button or Space. Locks the motors until released. |
 
-Speeds: `[drive]` in `config.toml`. Stop distances: `[safety]`.
+Touching the joystick always takes over from Go to / Explore.
+**Map / Lidar** (top left) switches between the map and a robot-centred lidar view with the stop zones.
+**Save / Load / Clear** the map in the Map card (Load expects the robot back at that map's start spot).
 
-## Step 4: room mapping
+## How it works
 
-```bash
-./run.sh main.py
+```
+ lidar process ──► scan ──► scan matcher ──► UKF update ──► fused pose ──► map + navigation
+ (YDLidar SDK)                 ▲                ▲                 │
+                               └── UKF predict ─┘◄── wheel commands (20 Hz)
 ```
 
-Open the dashboard and press **Map view**. Drive slowly around the room with the joystick;
-the map builds as you go (grey = free floor, dark = walls, darker background = not seen yet).
+- **UKF** (`rover/ukf.py`), state `[x, y, heading, speed gain, turn gain]`
+  - *Predict*, 20×/s: moves the pose using the wheel commands and the learned gains
+    (how many m/s and rad/s the robot really does per unit of command; no encoders needed).
+  - *Update*, every scan (~3.3×/s): fuses the scan-matching pose. The noise grows when the
+    match is poor, and outliers are rejected with a Mahalanobis gate.
+  - The dashboard shows the UKF's accuracy (±cm), current speed, and the learned motor calibration.
+- **Mapping** (`rover/slam.py`): occupancy grid + correlative scan matching seeded by the UKF prediction.
+  People standing on known floor aren't drawn as walls.
+- **Planning** (`rover/planner.py`): A* on the map plus what the lidar sees right now; frontier search for Explore.
+- **Navigation** (`rover/navigator.py`): follows the route, re-plans when someone steps in, waits / backs up when blocked.
+- **Safety** (`rover/safety.py`): slows within 60 cm and stops within 20 cm of anything in its path, in every mode.
+- **Lidar** runs in its own process (`rover/lidar.py`) so it can't stall the rest.
 
-Tips for a clean map:
-- Drive slowly and turn gently. Mapping pauses while turning fast ("mapping: paused").
-- Start somewhere with walls in view, and do a full loop of the room.
-- If **match** drops low or shows LOST, stop, let it settle, and drive back to an area it already knows.
-- **Save** stores the map in `maps/`. **Clear** starts over from the current spot.
-- **Load** expects the robot to be back at that map's starting spot, facing the same way.
+## Tools
 
-Settings: `[slam]` in `config.toml`.
+| Command | Purpose |
+|---|---|
+| `./run.sh tools/test_motors.py` | Each motor direction (wheels off the ground) |
+| `./run.sh tools/trim_test.py 0.35` | Tune straight-line balance (`[motors] trim`) |
+| `./run.sh tools/test_lidar.py` | Lidar rate + nearest object per direction |
+| `./run.sh tools/lidar_diag.py` | Scan rate / completeness diagnostics |
+| `./run.sh tools/slam_bench.py` | Mapping speed on this Pi |
+| `./run.sh tools/drive_until_obstacle.py` | Drive forward, stop before an obstacle |
+| `python3 main.py --fake` | Dashboard with fake lidar on a laptop |
 
-## Step 5: click-to-go
+## Settings (`config.toml`)
 
-```bash
-./run.sh main.py
-```
-
-In **Map view**, click a spot. The robot plans a route (blue line) to the goal (green
-cross), turns towards it and drives there, avoiding walls on the map and stopping for
-anything in its way. Mapping keeps running while it drives.
-
-- You can click a spot it hasn't mapped yet; it plans through unknown space and
-  re-plans every 2 s as the map fills in.
-- If it's blocked for 1.5 s or stuck, it backs up, turns a little and re-plans (up to 4 times).
-- **Cancel goal**, **STOP**, or touching the joystick stops the trip.
-
-Tuning: `[nav]` (speed, turning) and `[planner]` (clearance) in `config.toml`.
-
-### Avoiding people (live obstacles)
-
-Every route plan also blocks what the lidar sees *right now* (within 3 m), so people and
-moved furniture are avoided even though they're not in the map.
-
-- Something steps into the route ahead (within ~2.5 m) → it re-plans immediately and steers around.
-- Blocked with no way around → "waiting for the way to clear" for up to 4 s, then backs up and retries.
-- Always slows within 60 cm and stops within 20 cm of anything in its path.
-
-- People are kept out of the map: an obstacle appearing on floor that's already been seen
-  empty several times is treated as moving. It's avoided but not drawn as a wall.
-  Anything that does slip in (e.g. someone standing there the first time an area is mapped)
-  fades out after a few passes once the spot is empty.
-
-Settings: `live_range`, `wait_for_clear` in `[nav]`; distances in `[safety]`.
+| Section | What |
+|---|---|
+| `[motors]` | Pins, `trim`, max speed |
+| `[lidar]` | Port, `flip`, `angle_offset_deg`, `motor_dtr` |
+| `[drive]` | Joystick speeds |
+| `[nav]` | Autonomous speed, turning, people handling |
+| `[safety]` | Stop / slow distances |
+| `[slam]`, `[planner]` | Map size and resolution, clearance from walls |
+| `[ukf]` | Filter noise settings and starting motor-gain guesses |
+| `[camera]` | Device, resolution, frame rate |

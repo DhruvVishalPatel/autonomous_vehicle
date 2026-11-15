@@ -33,8 +33,32 @@ def serve(robot, port):
                 self._send(200, robot.map_bytes(), "application/octet-stream")
             elif self.path == "/api/maps":
                 self._send(200, json.dumps(robot.list_maps()).encode(), "application/json")
+            elif self.path == "/stream.mjpg":
+                self._stream()
             else:
                 self._send(404, b"", "text/plain")
+
+        def _stream(self):
+            cam = robot.camera
+            if not cam.enabled:
+                return self._send(404, b"camera off", "text/plain")
+            self.send_response(200)
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            cam.viewers += 1
+            try:
+                while True:
+                    jpg = cam.wait_jpeg(1.0)
+                    if jpg:
+                        self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+                                         + str(len(jpg)).encode() + b"\r\n\r\n" + jpg + b"\r\n")
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            finally:
+                cam.viewers -= 1
+                self.close_connection = True
 
         def do_POST(self):
             try:
@@ -54,6 +78,8 @@ def serve(robot, port):
                     robot.go_to(float(d["x"]), float(d["y"]))
                 elif self.path == "/api/cancel":
                     robot.nav.cancel("cancelled")
+                elif self.path == "/api/explore":
+                    robot.explore()
                 else:
                     return self._send(404, b"", "text/plain")
                 self._send(200, b'{"ok":true}', "application/json")

@@ -6,7 +6,9 @@ from pathlib import Path
 
 import numpy as np
 
+from rover.camera import Camera
 from rover.navigator import Navigator
+from rover.ukf import PoseUKF
 from rover.safety import Safety
 from rover.slam import SLAM, compose, relative
 
@@ -30,6 +32,11 @@ class Robot:
         self._scan_evt = threading.Event()
         self.lidar.on_scan = lambda s: self._scan_evt.set()
         self.nav = Navigator(cfg, self.slam, log=self.log)
+        self.ukf = PoseUKF(cfg)
+        self._ukf_lock = threading.Lock()
+        self.camera = Camera(cfg) if not fake else Camera({})
+        if cfg.get("camera", {}).get("enabled") and not self.camera.enabled and not fake:
+            self.log(f"camera off: {self.camera.error}")
         d = cfg["drive"]
         self.vmax, self.wmax = d["max_speed"], d["turn_speed"]
         self.manual_timeout, self.lidar_timeout = d["manual_timeout"], d["lidar_timeout"]
@@ -60,6 +67,14 @@ class Robot:
     def go_to(self, x, y):
         self.nav.go_to(x, y)
 
+    def explore(self):
+        self.nav.explore()
+
+    def pose(self):
+        """Fused pose from the UKF (updated 20x per second)."""
+        with self._ukf_lock:
+            return self.ukf.pose
+
     def log(self, msg):
         t = time.strftime("%H:%M:%S")
         print(f"[{t}] {msg}", flush=True)
@@ -67,10 +82,9 @@ class Robot:
 
     # ---------------------------------------------------------- mapping
     def _slam_loop(self):
-        """Constant-velocity guess between scans (no wheel encoders):
-        if the robot is being driven, assume it keeps moving like it did over the
-        last scan; if the joystick is idle, assume it stands still."""
-        last_stamp, last_delta, last_dt = None, np.zeros(3), 0.3
+        """Per lidar scan: the UKF's predicted pose seeds the scan matcher, the
+        matched pose is fused back into the UKF, and the map uses the fused pose."""
+        last_stamp = None
         while self._run:
             if not self._scan_evt.wait(1.0):
                 continue
@@ -78,20 +92,23 @@ class Robot:
             scan = self.lidar.latest
             if scan is None or scan.stamp == last_stamp:
                 continue
-            dt = 0.3 if last_stamp is None else min(scan.stamp - last_stamp, 1.0)
             last_stamp = scan.stamp
-            moving = any(abs(c) > 0.01 for c in self.cmd)
-            pred = last_delta * (dt / last_dt) if moving else np.zeros(3)
-            before = self.slam.pose.copy()
+            with self._ukf_lock:
+                prior = self.ukf.pose
+                turn_rate = self.ukf.sigma()[3]
+            pred = relative(prior, self.slam.pose)       # motion since the last scan, per UKF
             t0 = time.perf_counter()
             try:
-                after = self.slam.process(scan, pred, turn_rate=pred[2] / dt)
+                matched = self.slam.process(scan, pred, turn_rate=turn_rate)
             except Exception as e:
                 self.log(f"mapping error: {e}")
                 continue
+            with self._ukf_lock:
+                if self.slam.scans > 1 and not self.slam.lost:
+                    self.ukf.update_pose(matched, self.slam.quality)
+                fused = self.ukf.pose
+            self.slam.pose = fused                       # next scan starts from the fused pose
             self.slam_ms = 0.8 * self.slam_ms + 0.2 * (time.perf_counter() - t0) * 1000
-            last_delta = relative(after, before) if (moving and not self.slam.lost) else np.zeros(3)
-            last_dt = dt
 
     def save_map(self, name):
         name = "".join(ch for ch in str(name) if ch.isalnum() or ch in "-_") or "map"
@@ -104,6 +121,8 @@ class Robot:
         try:
             self.nav.cancel("map loaded")
             self.slam.load(MAP_DIR / f"{name}.npz")
+            with self._ukf_lock:
+                self.ukf.reset()
             self.log(f"map loaded: {name} (robot must be back at that map's start spot, same direction)")
         except Exception as e:
             self.log(f"could not load map '{name}': {e}")
@@ -113,7 +132,10 @@ class Robot:
         return sorted(p.stem for p in MAP_DIR.glob("*.npz"))
 
     def clear_map(self):
+        self.nav.cancel("map cleared")
         self.slam.reset()
+        with self._ukf_lock:
+            self.ukf.reset()
         self.log("map cleared — current position is the new origin")
 
     def map_bytes(self):
@@ -133,8 +155,12 @@ class Robot:
     # ---------------------------------------------------------- loop
     def _loop(self):
         dt = 0.05
+        last = time.monotonic()
         while self._run:
             t0 = time.monotonic()
+            with self._ukf_lock:                          # UKF predict at 20 Hz with the wheels as driven
+                self.ukf.predict(t0 - last, *self.cmd)
+            last = t0
             v, w, tj = self._joy
             scan = self.lidar.latest
             if self.estop:
@@ -149,7 +175,7 @@ class Robot:
                 v, w = self.safety.filter(v, w, scan)
                 self.status = self.safety.reason or "driving"
             elif self.nav.active:
-                v, w = self.nav.command(self.slam.pose, self.safety, scan)
+                v, w = self.nav.command(self.pose(), self.safety, scan)
                 v, w = self.safety.filter(v, w, scan)
                 self.status = self.safety.reason or self.nav.status
             else:
@@ -176,9 +202,16 @@ class Robot:
             step = max(1, len(xy) // 400)
             pts = [[round(a, 3), round(b, 3)] for a, b in xy[::step]]
         f, r = self.safety.front, self.safety.rear
-        g, p = self.slam.grid, self.slam.pose
+        g, p = self.slam.grid, self.pose()
+        with self._ukf_lock:
+            sp, sth, vel, om = self.ukf.sigma()
         return {
             "pose": [round(float(v), 3) for v in p],
+            "ukf": {"pos_cm": round(sp * 100, 1), "heading_deg": round(math.degrees(sth), 1),
+                    "speed": round(vel, 2), "turn": round(om, 2),
+                    "gains": [round(g, 2) for g in self.ukf.gains()]},
+            "mode": self.nav.mode,
+            "camera": self.camera.enabled,
             "slam": {"quality": round(float(self.slam.quality), 2), "lost": bool(self.slam.lost),
                      "ms": round(self.slam_ms), "scans": int(self.slam.scans),
                      "mapping": bool(abs(self.slam.turn_rate) <= self.slam.max_turn)},

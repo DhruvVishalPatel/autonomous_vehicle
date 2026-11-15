@@ -24,3 +24,11 @@ max_range = 8.0          # m
 # Adjust these with tools/test_lidar.py:
 angle_offset_deg = 0.0   # rotate the scan so a box in front reads "front"
 flip = false             # true if left and right come out swapped
+
+[robot]
+length = 0.32            # m, front-to-back (MDF plate)
+width  = 0.28            # m, side-to-side incl. wheels
+
+[safety]
+stop_distance = 0.20     # m from the FRONT EDGE of the robot to the obstacle
+slow_distance = 0.60     # start slowing down inside this

@@ -46,3 +46,13 @@ Plug the X2's USB adapter into a blue USB 3 port on the Pi.
 Expect about 7 Hz and a few hundred points per scan. Use a box to check
 front / left (see the top of `tools/test_lidar.py`) and set `angle_offset_deg`
 and `flip` in `config.toml`.
+
+### Drive until an obstacle
+
+After the box test passes:
+
+```bash
+./run.sh tools/drive_until_obstacle.py        # optional speed, e.g. 0.4
+```
+
+Drives forward, slows down within 60 cm, stops 20 cm before an obstacle (`[safety]` in `config.toml`).

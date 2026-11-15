@@ -39,6 +39,9 @@ class Robot:
         self._run = True
         threading.Thread(target=self._loop, name="control", daemon=True).start()
         threading.Thread(target=self._slam_loop, name="slam", daemon=True).start()
+        from rover import slam as _slam
+        if _slam.cv2 is None:
+            self.log("WARNING: OpenCV missing -> mapping is very slow. Run ./setup_venv.sh")
 
     # ---------------------------------------------------------- inputs
     def joystick(self, x, y):

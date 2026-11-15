@@ -133,11 +133,11 @@ class SLAM:
         self.upd_d = s["update_dist"]
         self.upd_a = math.radians(s["update_angle_deg"])
         self.max_turn = s["max_turn_for_mapping"]     # rad/s; above this, localise only
+        self.prior_weight = s.get("prior_weight", 0.03)
         self.max_range = cfg["lidar"]["max_range"]
         self.turn_rate = 0.0
         self.pose = np.zeros(3)
         self._last_insert = None
-        self.prior_weight = 0.15  # pull towards the motion-model guess
         self.quality = 0.0        # mean match score of last scan (0..1)
         self.lost = False
         self.scans = 0
@@ -228,8 +228,8 @@ class SLAM:
             pts = pts[np.linspace(0, len(pts) - 1, 220).astype(int)]
         best = pred
         # (half-width xy, step xy, half-width th, step th)
-        for hw, st, hth, sth in ((self.search_xy, 0.05, self.search_th, math.radians(1.5)),
-                                 (0.05, 0.0125, math.radians(1.5), math.radians(0.375))):
+        for hw, st, hth, sth in ((self.search_xy, 0.05, self.search_th, math.radians(2.0)),
+                                 (0.05, 0.0125, math.radians(2.0), math.radians(0.5))):
             xs = best[0] + np.arange(-hw, hw + 1e-9, st)
             ys = best[1] + np.arange(-hw, hw + 1e-9, st)
             ths = best[2] + np.arange(-hth, hth + 1e-9, sth)

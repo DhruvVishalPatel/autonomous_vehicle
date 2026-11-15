@@ -86,6 +86,7 @@ function update() {
   const p = S.pose;
   $("pose").textContent = `${p[0].toFixed(2)}, ${p[1].toFixed(2)} m · ${(p[2] * 180 / Math.PI).toFixed(0)}°`;
   $("slam").textContent = (S.slam.mapping ? "on" : "paused (turning fast)") + ` · ${S.slam.ms} ms`;
+  $("slam").style.color = S.slam.ms > 250 ? "#e5484d" : "";
   $("log").textContent = S.messages.slice().reverse().join("\n");
   if (S.map.version !== mapVersion) fetchMap(S.map.version);
   $("stop").classList.toggle("on", S.estop);

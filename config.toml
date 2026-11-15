@@ -48,10 +48,11 @@ port = 8080
 
 [slam]
 resolution = 0.05            # m per map cell
-size_m     = 30.0            # map is size_m x size_m, robot starts in the middle
-search_xy  = 0.30            # m, how far a scan may move between two scans
+size_m     = 20.0            # map is size_m x size_m, robot starts in the middle
+search_xy  = 0.35            # m, how far a scan may move between two scans
 search_theta_deg = 30.0      # deg, how far it may turn between two scans
 min_points = 60
+prior_weight = 0.03          # how much to trust the 'keep moving like before' guess (small = trust lidar)
 update_dist = 0.05           # add a scan to the map after moving this much…
 update_angle_deg = 4.0       # …or turning this much
 max_turn_for_mapping = 0.6   # rad/s; faster turns smear the 3.3 Hz scans -> not mapped

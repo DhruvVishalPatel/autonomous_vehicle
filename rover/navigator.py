@@ -26,6 +26,12 @@ class Navigator:
         self.turn_first = n["turn_in_place"]
         self.lookahead, self.tol = n["lookahead"], n["goal_tolerance"]
         self.replan_period, self.stuck_time = n["replan_period"], n["stuck_time"]
+        self.live_range = n.get("live_range", 3.0)
+        self.wait_for_clear = n.get("wait_for_clear", 4.0)
+        r = cfg["robot"]
+        self.half_w = r["width"] / 2 + 0.05
+        self._live = np.zeros((0, 2))       # current scan, world frame, nearby only
+        self._last_fast_replan = 0.0
         self.goal = None          # (x, y)
         self.path = None          # [(x, y), ...]
         self.status = "idle"
@@ -33,6 +39,7 @@ class Navigator:
         self._last_plan = 0.0
         self._idx = 0
         self._recovery = []       # [(duration, v, w), ...]
+        self._blocked_t0 = None   # when we first got held up by an obstacle
         self._phase_end = 0.0
         self._recoveries = 0
         self._hist = []           # (t, x, y, th) while trying to move
@@ -77,28 +84,42 @@ class Navigator:
             return
         if not self._need_plan and time.monotonic() - self._last_plan < self.replan_period:
             return
-        path, reason = planner.plan(self.cfg, self.slam.grid, self._pose[:2], goal)
+        path, reason = planner.plan(self.cfg, self.slam.grid, self._pose[:2], goal, live=self._live)
+        blocked_by_live = False
+        if path is None and len(self._live):
+            # would there be a route if the current obstacles (people) moved away?
+            p2, _ = planner.plan(self.cfg, self.slam.grid, self._pose[:2], goal)
+            blocked_by_live = p2 is not None
         with self._lock:
             if self.goal != goal:          # goal changed meanwhile
                 return
             self._last_plan, self._need_plan = time.monotonic(), False
             if path is None:
+                if blocked_by_live:        # someone is in the way: stop and wait, retry soon
+                    self.path = None
+                    self._blocked_t0 = self._blocked_t0 or time.monotonic()
+                    self._last_plan = time.monotonic() - self.replan_period + 0.5
+                    self._set_status("waiting for the way to clear")
+                    return
                 self.goal, self.path = None, None
                 self._set_status(f"failed: {reason}")
                 return
-            first = self.path is None
+            first = self.path is None or self.status.startswith("waiting")
             self.path, self._idx = path, 0
         if first:
             self._set_status(f"driving to ({goal[0]:.2f}, {goal[1]:.2f})"
                              + (" through unexplored area" if "unexplored" in reason else ""))
 
     # ----------------------------------------------------------- control tick
-    def command(self, pose, safety):
+    def command(self, pose, safety, scan=None):
         """(v, w) motor-command units for this tick; (0, 0) when idle."""
         self._pose = pose.copy()
         now = time.monotonic()
         if self.goal is None:
+            self._blocked_t0 = None
             return 0.0, 0.0
+        if scan is not None:
+            self._live = self._world_points(pose, scan)
 
         if self._recovery:                       # back up / turn manoeuvre
             _, v, w = self._recovery[0]
@@ -114,20 +135,63 @@ class Navigator:
 
         path = self.path
         if not path:
-            return 0.0, 0.0                      # waiting for the first plan
+            if self._blocked_t0 and now - self._blocked_t0 > self.wait_for_clear:
+                self._blocked_t0 = None
+                self._start_recovery(safety)
+            return 0.0, 0.0                      # waiting for a plan
 
         gx, gy = path[-1]
         if math.hypot(gx - pose[0], gy - pose[1]) < self.tol:
             self.cancel("goal reached")
             return 0.0, 0.0
 
-        if safety.blocked_for() > 1.5 or self._stuck(now, pose):
+        # something (a person?) moved into the route ahead -> re-plan right away
+        if self._path_obstructed(pose, path) and now - self._last_fast_replan > 0.5:
+            self._last_fast_replan = now
+            self._need_plan = True
+        # held back by the safety stop: re-plan around it, wait a bit, then back up
+        if safety.blocked_for() > 0:
+            self._blocked_t0 = self._blocked_t0 or now
+            if now - self._last_fast_replan > 0.5:
+                self._last_fast_replan = now
+                self._need_plan = True
+            if now - self._blocked_t0 > self.wait_for_clear:
+                self._blocked_t0 = None
+                self._start_recovery(safety)
+                return 0.0, 0.0
+        else:
+            self._blocked_t0 = None
+        if self._stuck(now, pose):
             self._start_recovery(safety)
             return 0.0, 0.0
 
         v, w = self._steer(pose, path)
         self._hist.append((now, pose[0], pose[1], pose[2]))
         return v, w
+
+    def _world_points(self, pose, scan):
+        near = scan.ranges < self.live_range
+        a, r = scan.angles[near], scan.ranges[near]
+        c, s = math.cos(pose[2]), math.sin(pose[2])
+        x, y = r * np.cos(a), r * np.sin(a)
+        return np.column_stack((pose[0] + c * x - s * y, pose[1] + s * x + c * y))
+
+    def _path_obstructed(self, pose, path, ahead=2.5):
+        """True if a current-scan point sits on the route within `ahead` metres."""
+        if not len(self._live):
+            return False
+        pts, dist, prev = [], 0.0, (pose[0], pose[1])
+        for p in path[self._idx:]:
+            dist += math.hypot(p[0] - prev[0], p[1] - prev[1])
+            if dist > ahead:
+                break
+            pts.append(p)
+            prev = p
+        if not pts:
+            return False
+        P = np.asarray(pts)
+        d = np.min(np.linalg.norm(self._live[:, None, :] - P[None, :, :], axis=2), axis=1)
+        return bool((d < self.half_w).any())
 
     def _steer(self, pose, path):
         best_i, best_d = self._idx, 1e9          # progress along the path, never backwards

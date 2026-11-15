@@ -145,7 +145,7 @@ class Robot:
                 v, w = self.safety.filter(v, w, scan)
                 self.status = self.safety.reason or "driving"
             elif self.nav.active:
-                v, w = self.nav.command(self.slam.pose, self.safety)
+                v, w = self.nav.command(self.slam.pose, self.safety, scan)
                 v, w = self.safety.filter(v, w, scan)
                 self.status = self.safety.reason or self.nav.status
             else:

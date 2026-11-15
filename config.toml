@@ -70,6 +70,8 @@ lookahead    = 0.40      # m: aim at the path point this far ahead
 goal_tolerance = 0.15    # m: close enough = arrived
 replan_period  = 2.0     # s
 stuck_time     = 5.0     # s of trying without moving -> back up and retry
+live_range     = 3.0     # m: obstacles from the current scan within this range block the route
+wait_for_clear = 4.0     # s: blocked with no way around -> wait this long for a person to move, then back up
 
 [explore]                # used in Step 6
 min_frontier_size = 4

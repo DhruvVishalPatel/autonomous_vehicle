@@ -31,7 +31,9 @@ def _dilate(mask, radius_cells):
 class PlanningMap:
     """Coarse grid built from the occupancy map: state (free/unknown/lethal) + cost."""
 
-    def __init__(self, cfg, grid):
+    def __init__(self, cfg, grid, live=None):
+        """live: optional Nx2 world points from the CURRENT scan (people, moved
+        furniture). They block the route like walls but are never stored in the map."""
         p = cfg["planner"]
         self.res = p["resolution"]
         self.f = max(1, int(round(self.res / grid.res)))
@@ -40,6 +42,12 @@ class PlanningMap:
         self.origin = grid.origin
         L = grid.L[: self.n * self.f, : self.n * self.f].reshape(self.n, self.f, self.n, self.f)
         occ = (L > 0.6).any(axis=(1, 3))
+        if live is not None and len(live):
+            rr = ((live[:, 1] - self.origin) // self.res).astype(int)
+            cc = ((live[:, 0] - self.origin) // self.res).astype(int)
+            ok = (rr >= 0) & (rr < self.n) & (cc >= 0) & (cc < self.n)
+            occ = occ.copy()
+            occ[rr[ok], cc[ok]] = True
         seen = (np.abs(L) > 0.2).any(axis=(1, 3))
         r = cfg["robot"]
         radius = math.hypot(r["length"] / 2, r["width"] / 2) + p["inflation"]   # corners clear walls when turning
@@ -138,14 +146,14 @@ def astar(pm, start, goal):
     return [divmod(int(v), n) for v in path]
 
 
-def plan(cfg, grid, start_xy, goal_xy):
+def plan(cfg, grid, start_xy, goal_xy, live=None):
     """World-coordinate path from start to goal, or (None, reason).
 
     First tries through explored space only. If that fails (e.g. you clicked
     somewhere not yet mapped), retries treating unknown space as free; the
     path is re-planned as the map fills in while driving.
     """
-    pm = PlanningMap(cfg, grid)
+    pm = PlanningMap(cfg, grid, live)
     s = pm.to_cell(*start_xy)
     if not pm.inside(*s):
         return None, "robot outside map"

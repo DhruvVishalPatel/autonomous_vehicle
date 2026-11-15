@@ -10,7 +10,7 @@ Built step by step. Each step is tested on the robot before the next one starts.
 | 2 | Lidar readings | ✅ done |
 | 3 | Web dashboard + obstacle stop | ✅ done |
 | 4 | Room mapping | ✅ done |
-| 5 | Click-to-go navigation | ⏳ testing |
+| 5 | Click-to-go navigation + avoiding people | ⏳ testing |
 | 6 | Exploration | |
 | 7 | Camera stream + start on boot | |
 
@@ -120,3 +120,14 @@ anything in its way. Mapping keeps running while it drives.
 - **Cancel goal**, **STOP**, or touching the joystick stops the trip.
 
 Tuning: `[nav]` (speed, turning) and `[planner]` (clearance) in `config.toml`.
+
+### Avoiding people (live obstacles)
+
+Every route plan also blocks what the lidar sees *right now* (within 3 m), so people and
+moved furniture are avoided even though they're not in the map.
+
+- Something steps into the route ahead (within ~2.5 m) → it re-plans immediately and steers around.
+- Blocked with no way around → "waiting for the way to clear" for up to 4 s, then backs up and retries.
+- Always slows within 60 cm and stops within 20 cm of anything in its path.
+
+Settings: `live_range`, `wait_for_clear` in `[nav]`; distances in `[safety]`.

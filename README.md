@@ -6,8 +6,8 @@ Built step by step. Each step is tested on the robot before the next one starts.
 
 | Step | What | Status |
 |---|---|---|
-| 1 | Motors + keyboard driving | ⏳ testing |
-| 2 | Lidar readings | |
+| 1 | Motors + keyboard driving | ✅ done |
+| 2 | Lidar readings | ⏳ testing |
 | 3 | Web dashboard + obstacle stop | |
 | 4 | Room mapping | |
 | 5 | Click-to-go navigation | |
@@ -33,3 +33,16 @@ right forward/backward → GPIO21/20, L298N GND ↔ Pi GND. Pins are in `config.
 ./run.sh tools/test_motors.py        # wheels OFF the ground; optional speed: 0.3
 ./run.sh tools/drive_keyboard.py     # then on the floor: W A S D, SPACE stop, X quit
 ```
+
+## Step 2: lidar
+
+Plug the X2's USB adapter into a blue USB 3 port on the Pi.
+
+```bash
+./setup_lidar_sdk.sh             # once; builds the YDLidar SDK into .venv if needed
+./run.sh tools/test_lidar.py     # scan rate + nearest object in 8 directions
+```
+
+Expect about 7 Hz and a few hundred points per scan. Use a box to check
+front / left (see the top of `tools/test_lidar.py`) and set `angle_offset_deg`
+and `flip` in `config.toml`.

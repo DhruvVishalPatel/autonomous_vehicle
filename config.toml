@@ -12,3 +12,15 @@ right_backward = 20
 invert_left  = false    # set true if the left side runs backwards
 invert_right = false
 max_speed    = 1.0      # cap on any command (0..1)
+
+[lidar]
+port      = "/dev/ttyUSB0"
+baud      = 115200
+frequency = 7.0          # X2 spins at a fixed ~7 Hz
+sample_rate = 3          # kHz
+min_range = 0.12         # m, ignore closer returns (chassis, standoffs)
+max_range = 8.0          # m
+# Robot convention: angle 0 = straight ahead, positive = to the LEFT (counter-clockwise).
+# Adjust these with tools/test_lidar.py:
+angle_offset_deg = 0.0   # rotate the scan so a box in front reads "front"
+flip = false             # true if left and right come out swapped

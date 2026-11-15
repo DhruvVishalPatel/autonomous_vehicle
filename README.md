@@ -130,4 +130,9 @@ moved furniture are avoided even though they're not in the map.
 - Blocked with no way around → "waiting for the way to clear" for up to 4 s, then backs up and retries.
 - Always slows within 60 cm and stops within 20 cm of anything in its path.
 
+- People are kept out of the map: an obstacle appearing on floor that's already been seen
+  empty several times is treated as moving. It's avoided but not drawn as a wall.
+  Anything that does slip in (e.g. someone standing there the first time an area is mapped)
+  fades out after a few passes once the spot is empty.
+
 Settings: `live_range`, `wait_for_clear` in `[nav]`; distances in `[safety]`.

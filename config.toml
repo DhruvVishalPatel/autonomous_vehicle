@@ -34,11 +34,11 @@ length = 0.32            # m, front-to-back (MDF plate)
 width  = 0.28            # m, side-to-side incl. wheels
 
 [safety]
-stop_distance = 0.20     # m from the front (or rear) EDGE of the robot to the obstacle
-slow_distance = 0.60     # start slowing down inside this
+stop_distance = 0.30     # m from the front (or rear) EDGE of the robot to the obstacle
+slow_distance = 0.80     # start slowing down inside this
 
 [drive]
-max_speed  = 0.5         # joystick full forward = this motor command (0..1)
+max_speed  = 0.7         # joystick full forward = this motor command (0..1)
 turn_speed = 0.45        # joystick full sideways = this turn command
 manual_timeout = 0.5     # s without a joystick message -> stop (phone locked, Wi-Fi drop)
 lidar_timeout  = 0.6     # s without a lidar scan -> stop
@@ -62,7 +62,7 @@ resolution = 0.10        # m per cell for route planning (coarser than the map =
 inflation  = 0.03        # extra clearance on top of the robot's turning radius
 
 [nav]
-speed        = 0.35      # forward motor command while driving to a goal (0..1)
+speed        = 0.5      # forward motor command while driving to a goal (0..1)
 turn_speed   = 0.40      # max turn command
 turn_gain    = 1.0       # turn command per radian of heading error
 turn_in_place = 0.8      # rad: if the target is this far off to the side, spin first

@@ -21,8 +21,12 @@ except ImportError:  # pragma: no cover
     cv2 = None
 
 L_OCC = 0.9
-L_FREE = -0.35
-L_MIN, L_MAX = -4.0, 4.0
+L_FREE = -0.4
+L_MIN, L_MAX = -4.0, 3.0     # low ceiling: things that leave (people) clear after a few passes
+# A cell seen as empty floor this confidently (several clear passes) is not turned into
+# a wall by a new hit: whatever is standing there now is treated as moving (a person).
+# It is still avoided while driving (live obstacles), it just isn't stored in the map.
+FREE_LOCK = -1.5
 
 
 def wrap(a):
@@ -65,6 +69,11 @@ class OccupancyGrid:
         c, s = math.cos(pose[2]), math.sin(pose[2])
         R = np.array([[c, -s], [s, c]])
         wpts = pts @ R.T + pose[:2]
+        # cells hit this scan, and which of them are known empty floor (-> moving thing, skip)
+        hr, hc = self.world_to_cell(wpts[hit])
+        hok = self.inside(hr, hc)
+        occ_flat = np.unique(hr[hok] * self.n + hc[hok])
+        occ_flat = occ_flat[self.L.ravel()[occ_flat] > FREE_LOCK]
         # --- free space: sample along each ray up to one cell before the hit
         rng = np.hypot(pts[:, 0], pts[:, 1])
         step = self.res * 0.8
@@ -80,11 +89,8 @@ class OccupancyGrid:
             ok = self.inside(r, cc)
             flat = np.unique(r[ok] * self.n + cc[ok])
             self.L.ravel()[flat] += L_FREE
-        # --- occupied endpoints
-        r, cc = self.world_to_cell(wpts[hit])
-        ok = self.inside(r, cc)
-        flat = np.unique(r[ok] * self.n + cc[ok])
-        self.L.ravel()[flat] += L_OCC
+        # --- occupied endpoints (except on known empty floor)
+        self.L.ravel()[occ_flat] += L_OCC
         np.clip(self.L, L_MIN, L_MAX, out=self.L)
         self.version += 1
 
@@ -211,6 +217,7 @@ class SLAM:
         n_old, n = L.shape[0], self.grid.n
         with self.lock:
             # both maps are centred on the start point, so a different size just pads/crops evenly
+            L = np.clip(L, L_MIN, L_MAX)       # old maps used a higher ceiling
             self.grid.L[:] = 0
             if n_old <= n:
                 o = (n - n_old) // 2

@@ -21,7 +21,7 @@ port      = "/dev/ttyUSB0"
 baud      = 115200
 frequency = 7.0          # X2 spins at a fixed ~7 Hz
 sample_rate = 3          # kHz
-motor_dtr = true         # let the SDK control the motor via DTR (false if it spins too fast)
+motor_dtr = false         # let the SDK control the motor via DTR (false if it spins too fast)
 min_range = 0.12         # m, ignore closer returns (chassis, standoffs)
 max_range = 8.0          # m
 # Robot convention: angle 0 = straight ahead, positive = to the LEFT (counter-clockwise).
@@ -38,8 +38,8 @@ stop_distance = 0.20     # m from the front (or rear) EDGE of the robot to the o
 slow_distance = 0.60     # start slowing down inside this
 
 [drive]
-max_speed  = 0.7         # joystick full forward = this motor command (0..1)
-turn_speed = 0.6         # joystick full sideways = this turn command
+max_speed  = 0.5         # joystick full forward = this motor command (0..1)
+turn_speed = 0.45         # joystick full sideways = this turn command
 manual_timeout = 0.5     # s without a joystick message -> stop (phone locked, Wi-Fi drop)
 lidar_timeout  = 0.6     # s without a lidar scan -> stop
 

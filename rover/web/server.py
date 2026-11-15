@@ -1,5 +1,6 @@
 """Dashboard web server (standard library only).
-GET / page · GET /api/state JSON · POST /api/joy {x,y} · POST /api/estop {on}"""
+GET / page, /api/state, /api/map, /api/maps · POST /api/joy {x,y}, /api/estop {on},
+/api/map/save {name}, /api/map/load {name}, /api/map/clear"""
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -28,6 +29,10 @@ def serve(robot, port):
                 self._send(200, PAGE, "text/html; charset=utf-8")
             elif self.path == "/api/state":
                 self._send(200, json.dumps(robot.state()).encode(), "application/json")
+            elif self.path == "/api/map":
+                self._send(200, robot.map_bytes(), "application/octet-stream")
+            elif self.path == "/api/maps":
+                self._send(200, json.dumps(robot.list_maps()).encode(), "application/json")
             else:
                 self._send(404, b"", "text/plain")
 
@@ -39,6 +44,12 @@ def serve(robot, port):
                     robot.joystick(d.get("x", 0), d.get("y", 0))
                 elif self.path == "/api/estop":
                     robot.set_estop(d.get("on", True))
+                elif self.path == "/api/map/save":
+                    robot.save_map(d.get("name", "map"))
+                elif self.path == "/api/map/load":
+                    robot.load_map(d["name"])
+                elif self.path == "/api/map/clear":
+                    robot.clear_map()
                 else:
                     return self._send(404, b"", "text/plain")
                 self._send(200, b'{"ok":true}', "application/json")

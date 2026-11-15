@@ -8,8 +8,8 @@ Built step by step. Each step is tested on the robot before the next one starts.
 |---|---|---|
 | 1 | Motors + keyboard driving | ✅ done |
 | 2 | Lidar readings | ✅ done |
-| 3 | Web dashboard + obstacle stop | ⏳ testing |
-| 4 | Room mapping | |
+| 3 | Web dashboard + obstacle stop | ✅ done |
+| 4 | Room mapping | ⏳ testing |
 | 5 | Click-to-go navigation | |
 | 6 | Exploration | |
 | 7 | Camera stream + start on boot | |
@@ -85,3 +85,21 @@ on the same Wi-Fi as the Pi.
 - Motors stop if the phone stops sending (0.5 s) or lidar data stops.
 
 Speeds: `[drive]` in `config.toml`. Stop distances: `[safety]`.
+
+## Step 4: room mapping
+
+```bash
+./run.sh main.py
+```
+
+Open the dashboard and press **Map view**. Drive slowly around the room with the joystick;
+the map builds as you go (grey = free floor, dark = walls, darker background = not seen yet).
+
+Tips for a clean map:
+- Drive slowly and turn gently. Mapping pauses while turning fast ("mapping: paused").
+- Start somewhere with walls in view, and do a full loop of the room.
+- If **match** drops low or shows LOST, stop, let it settle, and drive back to an area it already knows.
+- **Save** stores the map in `maps/`. **Clear** starts over from the current spot.
+- **Load** expects the robot to be back at that map's starting spot, facing the same way.
+
+Settings: `[slam]` in `config.toml`.

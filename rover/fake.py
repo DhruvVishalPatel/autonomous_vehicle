@@ -25,7 +25,7 @@ class FakeMotors:
 class FakeLidar:
     """3 x 4 m room with a box 0.8 m ahead."""
     def __init__(self, cfg):
-        self.latest, self.rate_hz = None, 7.0
+        self.latest, self.rate_hz, self.on_scan = None, 7.0, None
         threading.Thread(target=self._loop, daemon=True).start()
 
     def _loop(self):
@@ -39,6 +39,8 @@ class FakeLidar:
             r[box] = np.minimum(r[box], 0.8 / np.cos(a[box]))
             r = r + np.random.normal(0, 0.01, r.size)
             self.latest = Scan(a.copy(), r, time.monotonic())
+            if self.on_scan:
+                self.on_scan(self.latest)
             time.sleep(1 / 7)
 
     def close(self):

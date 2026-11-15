@@ -23,6 +23,12 @@
           left: 65px; top: 65px; pointer-events: none; }
   .kv { width: 100%; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 13px; }
   .kv span:nth-child(odd) { color: #9aa1ad; }
+  .tab { background: #262a33; color: #e6e8ec; border: 1px solid #333a46; border-radius: 8px; padding: 5px 10px; font: inherit; }
+  .tab.on { background: #3d8bfd; border-color: #3d8bfd; }
+  .maprow { width: 100%; display: flex; gap: 6px; }
+  .maprow input, .maprow select { flex: 1; min-width: 0; background: #20242c; color: #e6e8ec; border: 1px solid #333a46; border-radius: 8px; padding: 6px; font: inherit; }
+  .maprow button { background: #262a33; color: #e6e8ec; border: 1px solid #333a46; border-radius: 8px; padding: 6px 10px; font: inherit; }
+  #log { width: 100%; font: 11px/1.4 ui-monospace, monospace; color: #7d8492; white-space: pre-wrap; }
   .hint { font-size: 12px; color: #7d8492; text-align: center; }
   @media (max-width: 700px) { #main { flex-direction: column; } #side { width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: center; } #view { min-height: 50vh; } }
 </style>
@@ -30,6 +36,9 @@
 <body>
 <header>
   <span id="status">connecting…</span>
+  <button id="vRobot" class="tab on">Robot view</button>
+  <button id="vMap" class="tab">Map view</button>
+  <span class="pill">match <b id="q">–</b></span>
   <span class="pill">lidar <b id="hz">–</b> Hz</span>
   <span class="pill">loop <b id="lhz">–</b> Hz</span>
 </header>
@@ -43,7 +52,12 @@
       <span>front clear</span><span id="front">–</span>
       <span>rear clear</span><span id="rear">–</span>
       <span>wheels L / R</span><span id="cmd">–</span>
+      <span>position</span><span id="pose">–</span>
+      <span>mapping</span><span id="slam">–</span>
     </div>
+    <div class="maprow"><input id="mname" value="room"><button id="save">Save</button></div>
+    <div class="maprow"><select id="mlist"></select><button id="load">Load</button><button id="clear">Clear</button></div>
+    <div id="log"></div>
   </div>
 </div>
 <script>
@@ -67,7 +81,55 @@ function update() {
   $("front").textContent = f(S.front); $("rear").textContent = f(S.rear);
   $("cmd").textContent = S.cmd[0].toFixed(2) + " / " + S.cmd[1].toFixed(2);
   $("stop").textContent = S.estop ? "RELEASE STOP" : "STOP";
+  $("q").textContent = (S.slam.quality * 100).toFixed(0) + "%" + (S.slam.lost ? " LOST" : "");
+  $("q").style.color = S.slam.lost ? "#e5484d" : "";
+  const p = S.pose;
+  $("pose").textContent = `${p[0].toFixed(2)}, ${p[1].toFixed(2)} m · ${(p[2] * 180 / Math.PI).toFixed(0)}°`;
+  $("slam").textContent = (S.slam.mapping ? "on" : "paused (turning fast)") + ` · ${S.slam.ms} ms`;
+  $("log").textContent = S.messages.slice().reverse().join("\n");
+  if (S.map.version !== mapVersion) fetchMap(S.map.version);
   $("stop").classList.toggle("on", S.estop);
+}
+
+// ---- map image (fetched when the map changes, at most ~1x per second)
+let mapImg = null, mapMeta = null, mapVersion = -1, mapBusy = false, mapLast = 0, view = "robot";
+async function fetchMap(version) {
+  if (mapBusy || performance.now() - mapLast < 900) return;     // retried on the next poll
+  mapBusy = true; mapLast = performance.now();
+  try {
+    const buf = await (await fetch("/api/map")).arrayBuffer();
+    const [r0, c0, h, w] = new Int32Array(buf, 0, 4);
+    if (h > 0 && w > 0) {
+      const cells = new Uint8Array(buf, 16), img = new ImageData(w, h);
+      for (let k = 0; k < h; k++) for (let j = 0; j < w; j++) {
+        const v = cells[(h - 1 - k) * w + j], o = (k * w + j) * 4;
+        const g = v === 255 ? 38 : v < 127 ? 205 : Math.round(150 - 135 * (v - 127) / 127);
+        img.data[o] = img.data[o + 1] = img.data[o + 2] = g; img.data[o + 3] = 255;
+        if (v === 255) { img.data[o] = 30; img.data[o + 1] = 34; img.data[o + 2] = 42; }
+      }
+      const off = document.createElement("canvas"); off.width = w; off.height = h;
+      off.getContext("2d").putImageData(img, 0, 0);
+      mapImg = off; mapMeta = { r0, c0, h, w };
+    }
+    mapVersion = version;
+  } finally { mapBusy = false; }
+}
+function drawMap(W, H, dpr) {
+  const k = zoom * dpr, [px, py, pth] = S.pose;
+  const P = (x, y) => [W / 2 + (x - px) * k, H / 2 - (y - py) * k];   // map: x right, y up, robot centred
+  if (mapImg) {
+    const res = S.map.res, [sx, sy] = P(S.map.origin + mapMeta.c0 * res, S.map.origin + (mapMeta.r0 + mapMeta.h) * res);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(mapImg, sx, sy, mapMeta.w * res * k, mapMeta.h * res * k);
+  }
+  const c = Math.cos(pth), s = Math.sin(pth);
+  ctx.fillStyle = "#ff5a5f";
+  for (const [x, y] of S.points) { const [qx, qy] = P(px + x * c - y * s, py + x * s + y * c); ctx.fillRect(qx - 1.5, qy - 1.5, 3, 3); }
+  const R = S.robot;
+  ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(-pth);
+  ctx.fillStyle = "#3d8bfd"; ctx.fillRect(-R.length / 2 * k, -R.width / 2 * k, R.length * k, R.width * k);
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(R.length / 2 * k, 0); ctx.stroke();
+  ctx.restore();
 }
 
 // ---- lidar view: robot in the centre, FRONT is UP, LEFT is left
@@ -75,6 +137,7 @@ function draw() {
   const dpr = devicePixelRatio || 1, W = cv.clientWidth * dpr, H = cv.clientHeight * dpr;
   if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
   ctx.fillStyle = "#121418"; ctx.fillRect(0, 0, W, H);
+  if (S && view === "map") { drawMap(W, H, dpr); requestAnimationFrame(draw); return; }
   const cx = W / 2, cy = H / 2, k = zoom * dpr;
   const P = (x, y) => [cx - y * k, cy - x * k];        // robot (x fwd, y left) -> screen
   ctx.strokeStyle = "#252a33"; ctx.fillStyle = "#5c6370"; ctx.font = 11 * dpr + "px system-ui";
@@ -119,7 +182,7 @@ const joyEnd = () => { jv = null; knob.style.left = knob.style.top = "65px"; pos
 joy.addEventListener("pointerup", joyEnd); joy.addEventListener("pointercancel", joyEnd);
 
 const keys = new Set();
-addEventListener("keydown", e => { keys.add(e.key.toLowerCase()); if (e.key === " ") { e.preventDefault(); $("stop").click(); } });
+addEventListener("keydown", e => { if (e.target.tagName === "INPUT") return; keys.add(e.key.toLowerCase()); if (e.key === " ") { e.preventDefault(); $("stop").click(); } });
 addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
 function keyVec() {
   let x = 0, y = 0;
@@ -131,6 +194,15 @@ function keyVec() {
 }
 setInterval(() => { const v = jv || keyVec(); if (v) post("/api/joy", v); }, 100);
 $("stop").onclick = () => post("/api/estop", {on: !(S && S.estop)});
+function setView(v) { view = v; $("vRobot").classList.toggle("on", v === "robot"); $("vMap").classList.toggle("on", v === "map"); }
+$("vRobot").onclick = () => setView("robot"); $("vMap").onclick = () => setView("map");
+async function refreshMaps() {
+  try { const m = await (await fetch("/api/maps")).json(); $("mlist").innerHTML = m.map(n => `<option>${n}</option>`).join(""); } catch (e) {}
+}
+$("save").onclick = async () => { await post("/api/map/save", {name: $("mname").value}); refreshMaps(); };
+$("load").onclick = () => { if ($("mlist").value) post("/api/map/load", {name: $("mlist").value}); };
+$("clear").onclick = () => { if (confirm("Clear the map? The robot's current spot becomes the new start.")) post("/api/map/clear", {}); };
+refreshMaps();
 
 poll(); requestAnimationFrame(draw);
 </script>

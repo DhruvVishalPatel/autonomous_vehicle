@@ -1,5 +1,6 @@
 """Obstacle stop. Every motor command passes through Safety.filter()."""
 import math
+import time
 
 import numpy as np
 
@@ -12,6 +13,7 @@ class Safety:
         self.slow_d = cfg["safety"]["slow_distance"]
         self.front = self.rear = math.inf
         self.reason = ""
+        self.blocked_since = None
 
     def clearances(self, scan):
         """Distance from the front / rear edge to the nearest point in the robot's path."""
@@ -43,4 +45,12 @@ class Safety:
             if k == 0:
                 self.reason = f"obstacle behind ({self.rear:.2f} m)"
             v *= k
+        if self.reason:
+            self.blocked_since = self.blocked_since or time.monotonic()
+        else:
+            self.blocked_since = None
         return v, w            # turning on the spot is always allowed
+
+    def blocked_for(self):
+        """Seconds the robot has been held back by an obstacle (0 if not blocked)."""
+        return 0.0 if self.blocked_since is None else time.monotonic() - self.blocked_since

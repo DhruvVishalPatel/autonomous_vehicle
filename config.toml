@@ -48,7 +48,7 @@ port = 8080
 
 [slam]
 resolution = 0.05            # m per map cell
-size_m     = 20.0            # map is size_m x size_m, robot starts in the middle
+size_m     = 40.0            # map is size_m x size_m, robot starts in the middle
 search_xy  = 0.35            # m, how far a scan may move between two scans
 search_theta_deg = 30.0      # deg, how far it may turn between two scans
 min_points = 60
@@ -56,3 +56,21 @@ prior_weight = 0.03          # how much to trust the 'keep moving like before' g
 update_dist = 0.05           # add a scan to the map after moving this much…
 update_angle_deg = 4.0       # …or turning this much
 max_turn_for_mapping = 0.6   # rad/s; faster turns smear the 3.3 Hz scans -> not mapped
+
+[planner]
+resolution = 0.10        # m per cell for route planning (coarser than the map = faster)
+inflation  = 0.03        # extra clearance on top of the robot's turning radius
+
+[nav]
+speed        = 0.35      # forward motor command while driving to a goal (0..1)
+turn_speed   = 0.40      # max turn command
+turn_gain    = 1.0       # turn command per radian of heading error
+turn_in_place = 0.8      # rad: if the target is this far off to the side, spin first
+lookahead    = 0.40      # m: aim at the path point this far ahead
+goal_tolerance = 0.15    # m: close enough = arrived
+replan_period  = 2.0     # s
+stuck_time     = 5.0     # s of trying without moving -> back up and retry
+
+[explore]                # used in Step 6
+min_frontier_size = 4
+blacklist_radius  = 0.5

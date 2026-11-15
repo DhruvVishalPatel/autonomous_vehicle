@@ -50,6 +50,10 @@ def serve(robot, port):
                     robot.load_map(d["name"])
                 elif self.path == "/api/map/clear":
                     robot.clear_map()
+                elif self.path == "/api/goto":
+                    robot.go_to(float(d["x"]), float(d["y"]))
+                elif self.path == "/api/cancel":
+                    robot.nav.cancel("cancelled")
                 else:
                     return self._send(404, b"", "text/plain")
                 self._send(200, b'{"ok":true}', "application/json")

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
+from rover.navigator import Navigator
 from rover.safety import Safety
 from rover.slam import SLAM, compose, relative
 
@@ -28,6 +29,7 @@ class Robot:
         self.messages = []
         self._scan_evt = threading.Event()
         self.lidar.on_scan = lambda s: self._scan_evt.set()
+        self.nav = Navigator(cfg, self.slam, log=self.log)
         d = cfg["drive"]
         self.vmax, self.wmax = d["max_speed"], d["turn_speed"]
         self.manual_timeout, self.lidar_timeout = d["manual_timeout"], d["lidar_timeout"]
@@ -52,7 +54,11 @@ class Robot:
     def set_estop(self, on):
         self.estop = bool(on)
         if on:
+            self.nav.cancel("E-STOP")
             self.motors.stop()
+
+    def go_to(self, x, y):
+        self.nav.go_to(x, y)
 
     def log(self, msg):
         t = time.strftime("%H:%M:%S")
@@ -84,7 +90,7 @@ class Robot:
                 self.log(f"mapping error: {e}")
                 continue
             self.slam_ms = 0.8 * self.slam_ms + 0.2 * (time.perf_counter() - t0) * 1000
-            last_delta = relative(after, before) if moving else np.zeros(3)
+            last_delta = relative(after, before) if (moving and not self.slam.lost) else np.zeros(3)
             last_dt = dt
 
     def save_map(self, name):
@@ -133,13 +139,19 @@ class Robot:
             elif scan is None or t0 - scan.stamp > self.lidar_timeout:
                 v = w = 0.0
                 self.status = "no lidar data"
-            elif t0 - tj > self.manual_timeout:
+            elif t0 - tj < self.manual_timeout and (v or w):
+                if self.nav.active:
+                    self.nav.cancel("cancelled: joystick used")
+                v, w = self.safety.filter(v, w, scan)
+                self.status = self.safety.reason or "driving"
+            elif self.nav.active:
+                v, w = self.nav.command(self.slam.pose, self.safety)
+                v, w = self.safety.filter(v, w, scan)
+                self.status = self.safety.reason or self.nav.status
+            else:
                 v = w = 0.0
                 self.safety.filter(0, 0, scan)        # keep clearances updated
                 self.status = "idle"
-            else:
-                v, w = self.safety.filter(v, w, scan)
-                self.status = self.safety.reason or "driving"
             left, right = v - w, v + w
             m = max(abs(left), abs(right), 1.0)
             left, right = left / m, right / m
@@ -168,6 +180,8 @@ class Robot:
                      "mapping": bool(abs(self.slam.turn_rate) <= self.slam.max_turn)},
             "map": {"res": float(g.res), "origin": float(g.origin), "version": int(g.version)},
             "messages": self.messages,
+            "goal": self.nav.goal,
+            "path": [[round(a, 2), round(b, 2)] for a, b in (self.nav.path or [])[::2]],
             "status": self.status,
             "estop": self.estop,
             "points": pts,

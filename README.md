@@ -9,8 +9,8 @@ Built step by step. Each step is tested on the robot before the next one starts.
 | 1 | Motors + keyboard driving | ✅ done |
 | 2 | Lidar readings | ✅ done |
 | 3 | Web dashboard + obstacle stop | ✅ done |
-| 4 | Room mapping | ⏳ testing |
-| 5 | Click-to-go navigation | |
+| 4 | Room mapping | ✅ done |
+| 5 | Click-to-go navigation | ⏳ testing |
 | 6 | Exploration | |
 | 7 | Camera stream + start on boot | |
 
@@ -103,3 +103,20 @@ Tips for a clean map:
 - **Load** expects the robot to be back at that map's starting spot, facing the same way.
 
 Settings: `[slam]` in `config.toml`.
+
+## Step 5: click-to-go
+
+```bash
+./run.sh main.py
+```
+
+In **Map view**, click a spot. The robot plans a route (blue line) to the goal (green
+cross), turns towards it and drives there, avoiding walls on the map and stopping for
+anything in its way. Mapping keeps running while it drives.
+
+- You can click a spot it hasn't mapped yet; it plans through unknown space and
+  re-plans every 2 s as the map fills in.
+- If it's blocked for 1.5 s or stuck, it backs up, turns a little and re-plans (up to 4 times).
+- **Cancel goal**, **STOP**, or touching the joystick stops the trip.
+
+Tuning: `[nav]` (speed, turning) and `[planner]` (clearance) in `config.toml`.

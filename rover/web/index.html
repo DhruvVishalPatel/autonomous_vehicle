@@ -13,11 +13,11 @@
   .pill { font-size: 12px; color: #9aa1ad; }
   #main { flex: 1; display: flex; min-height: 0; }
   #view { flex: 1; min-width: 0; touch-action: none; }
-  #side { width: 260px; padding: 12px; display: flex; flex-direction: column; gap: 14px; align-items: center; background: #181a20; }
+  #side { width: 260px; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; align-items: center; background: #181a20; }
   #stop { width: 100%; padding: 16px; font-size: 20px; font-weight: 700; border: 0; border-radius: 12px;
           background: #e5484d; color: #fff; }
   #stop.on { background: #5a1d20; }
-  #joy { width: 200px; height: 200px; border-radius: 50%; background: #20242c; border: 2px solid #2e3440;
+  #joy { flex-shrink: 0; width: 200px; height: 200px; border-radius: 50%; background: #20242c; border: 2px solid #2e3440;
          position: relative; touch-action: none; }
   #knob { width: 70px; height: 70px; border-radius: 50%; background: #3d8bfd; position: absolute;
           left: 65px; top: 65px; pointer-events: none; }
@@ -46,6 +46,8 @@
   <canvas id="view"></canvas>
   <div id="side">
     <button id="stop">STOP</button>
+    <button id="cancel" class="tab" style="width:100%;padding:10px">Cancel goal</button>
+    <div class="hint">Map view: click anywhere on the map to send the robot there.</div>
     <div id="joy"><div id="knob"></div></div>
     <div class="hint">Drag the joystick, or hold W A S D / arrow keys. Space = STOP.</div>
     <div class="kv">
@@ -123,6 +125,18 @@ function drawMap(W, H, dpr) {
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(mapImg, sx, sy, mapMeta.w * res * k, mapMeta.h * res * k);
   }
+  if (S.path.length > 1) {
+    ctx.strokeStyle = "#3d8bfd"; ctx.lineWidth = 3 * dpr; ctx.beginPath();
+    S.path.forEach(([x, y], i) => { const [qx, qy] = P(x, y); i ? ctx.lineTo(qx, qy) : ctx.moveTo(qx, qy); });
+    ctx.stroke();
+  }
+  if (S.goal) {
+    const [gx, gy] = P(S.goal[0], S.goal[1]);
+    ctx.strokeStyle = "#2fbf71"; ctx.lineWidth = 3 * dpr;
+    ctx.beginPath(); ctx.arc(gx, gy, 10 * dpr, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx - 15 * dpr, gy); ctx.lineTo(gx + 15 * dpr, gy);
+    ctx.moveTo(gx, gy - 15 * dpr); ctx.lineTo(gx, gy + 15 * dpr); ctx.stroke();
+  }
   const c = Math.cos(pth), s = Math.sin(pth);
   ctx.fillStyle = "#ff5a5f";
   for (const [x, y] of S.points) { const [qx, qy] = P(px + x * c - y * s, py + x * s + y * c); ctx.fillRect(qx - 1.5, qy - 1.5, 3, 3); }
@@ -165,6 +179,14 @@ function draw() {
   }
   requestAnimationFrame(draw);
 }
+// click on the map view = go there
+cv.addEventListener("click", e => {
+  if (view !== "map" || !S) return;
+  const dpr = devicePixelRatio || 1, r = cv.getBoundingClientRect(), k = zoom * dpr;
+  const sx = (e.clientX - r.left) * dpr, sy = (e.clientY - r.top) * dpr;
+  const x = S.pose[0] + (sx - cv.width / 2) / k, y = S.pose[1] - (sy - cv.height / 2) / k;
+  post("/api/goto", {x, y});
+});
 cv.addEventListener("wheel", e => { e.preventDefault(); zoom = Math.max(30, Math.min(400, zoom * (e.deltaY < 0 ? 1.15 : 0.87))); }, {passive: false});
 
 // ---- joystick + keyboard, sent 10x per second while active
@@ -195,6 +217,7 @@ function keyVec() {
 }
 setInterval(() => { const v = jv || keyVec(); if (v) post("/api/joy", v); }, 100);
 $("stop").onclick = () => post("/api/estop", {on: !(S && S.estop)});
+$("cancel").onclick = () => post("/api/cancel", {});
 function setView(v) { view = v; $("vRobot").classList.toggle("on", v === "robot"); $("vMap").classList.toggle("on", v === "map"); }
 $("vRobot").onclick = () => setView("robot"); $("vMap").onclick = () => setView("map");
 async function refreshMaps() {

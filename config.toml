@@ -14,7 +14,7 @@ invert_right = false
 max_speed    = 1.0      # cap on any command (0..1)
 # Straight-line balance. Robot curves LEFT -> make trim positive (slows the right side).
 # Robot curves RIGHT -> make it negative (slows the left side). Tune with tools/trim_test.py.
-trim         = 0.0
+trim         = 0.35
 
 [lidar]
 port      = "/dev/ttyUSB0"
@@ -33,5 +33,14 @@ length = 0.32            # m, front-to-back (MDF plate)
 width  = 0.28            # m, side-to-side incl. wheels
 
 [safety]
-stop_distance = 0.20     # m from the FRONT EDGE of the robot to the obstacle
+stop_distance = 0.20     # m from the front (or rear) EDGE of the robot to the obstacle
 slow_distance = 0.60     # start slowing down inside this
+
+[drive]
+max_speed  = 0.7         # joystick full forward = this motor command (0..1)
+turn_speed = 0.6         # joystick full sideways = this turn command
+manual_timeout = 0.5     # s without a joystick message -> stop (phone locked, Wi-Fi drop)
+lidar_timeout  = 0.6     # s without a lidar scan -> stop
+
+[web]
+port = 8080

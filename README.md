@@ -7,8 +7,8 @@ Built step by step. Each step is tested on the robot before the next one starts.
 | Step | What | Status |
 |---|---|---|
 | 1 | Motors + keyboard driving | ✅ done |
-| 2 | Lidar readings | ⏳ testing |
-| 3 | Web dashboard + obstacle stop | |
+| 2 | Lidar readings | ✅ done |
+| 3 | Web dashboard + obstacle stop | ⏳ testing |
 | 4 | Room mapping | |
 | 5 | Click-to-go navigation | |
 | 6 | Exploration | |
@@ -67,3 +67,21 @@ at similar speed, then tune the balance:
 ```
 
 Put the value that drives straight into `config.toml` → `[motors] trim`.
+
+## Step 3: web dashboard
+
+```bash
+./run.sh main.py
+```
+
+Open the printed address (e.g. `http://192.168.1.50:8080`) on your phone or laptop,
+on the same Wi-Fi as the Pi.
+
+- Live lidar view: robot in the middle, front is up. Red zone = stop, orange = slow down.
+- Joystick (or W A S D on a laptop). Release it and the robot stops.
+- STOP button (or Space) locks the motors until pressed again.
+- The robot refuses to drive into anything inside the red zone, forward or reverse;
+  turning on the spot is always allowed.
+- Motors stop if the phone stops sending (0.5 s) or lidar data stops.
+
+Speeds: `[drive]` in `config.toml`. Stop distances: `[safety]`.

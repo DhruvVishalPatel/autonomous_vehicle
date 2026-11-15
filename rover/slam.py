@@ -11,6 +11,7 @@ All numpy, ~20-60 ms per scan on a Pi 5.
 """
 import math
 import threading
+import time
 
 import numpy as np
 
@@ -157,6 +158,9 @@ class SLAM:
         turn_rate (rad/s): scans taken while spinning faster than max_turn are smeared,
         so they are used for position only, not added to the map."""
         self.turn_rate = turn_rate
+        T = time.perf_counter
+        t0 = T()
+        self.timing = {}
         pts = scan.points()
         if len(pts) < self.min_points:
             with self.lock:
@@ -169,16 +173,24 @@ class SLAM:
                 est = pred
                 self.quality = 1.0
             else:
+                t1 = T()
+                self.field.refresh()
+                self.timing["field"] = (T() - t1) * 1000
+                t1 = T()
                 est, q = self._match(pts[hit], pred)
+                self.timing["match"] = (T() - t1) * 1000
                 self.quality = q
                 self.lost = q < 0.18
                 if self.lost:
                     est = pred            # don't trust a bad match
             self.pose = est
             if self._should_insert(est) and abs(turn_rate) <= self.max_turn:
+                t1 = T()
                 self.grid.update(est, pts, hit)
+                self.timing["map_update"] = (T() - t1) * 1000
                 self._last_insert = est.copy()
             self.scans += 1
+            self.timing["total"] = (T() - t0) * 1000
             return self.pose.copy()
 
     def save(self, path):

@@ -176,9 +176,10 @@ class SLAM:
         # never trust a guess bigger than the robot could physically move between scans
         d = np.asarray(odom_delta, float).copy()
         dist = math.hypot(d[0], d[1])
-        if dist > 0.5 * self.search_xy:
-            d[:2] *= 0.5 * self.search_xy / dist
-        d[2] = max(-0.5 * self.search_th, min(0.5 * self.search_th, d[2]))
+        lim = 2.0 * self.search_xy          # the UKF prediction is reliable; only cap absurd values
+        if dist > lim:
+            d[:2] *= lim / dist
+        d[2] = max(-math.pi / 2, min(math.pi / 2, d[2]))
         with self.lock:
             pred = compose(self.pose, d)
             if self._last_insert is None:
